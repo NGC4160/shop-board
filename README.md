@@ -8,12 +8,14 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 ## Layout
 
-Each row is split like this:
+Spreadsheet on one page — not a kanban or card board. Every field edits inline. No separate edit modal.
 
-- **Left (sticky identity column):** customer name + Housecall Pro job number together
-- **Right:** Primary tech, Status, Next action, Time expectation, Actions
+- **Left (sticky identity column):** customer name + Housecall Pro job number together (inline text)
+- **Right:** Primary tech, Status, Next action, Time expectation, Actions (delete / add row)
 
-On tablet/phone, customer + job stay the header / left block; the other fields sit below or to the right.
+Tablet keeps the same compact table (horizontal scroll). Add row inserts a blank line on this page.
+
+Primary tech, Status, Next action, and Time expectation each have a **dropdown of known options plus a free-text box**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned. Other… is always available.
 
 Click a column header to sort. Click again to flip A–Z / Z–A. The last sort is remembered in the browser.
 

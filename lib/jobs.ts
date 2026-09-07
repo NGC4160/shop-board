@@ -41,6 +41,26 @@ export const PRIMARY_TECHS = [
 
 export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
 
+export const NEXT_ACTION_PRESETS = [
+  "Call customer",
+  "Text Housecall Pro invoice",
+  "Confirm drop-off time",
+  "Order parts",
+  "Call when parts come in",
+  "Test drive",
+  "Call customer — cart is ready",
+] as const;
+
+export const TIME_PRESETS = [
+  "Due today",
+  "Due today 4:00 PM",
+  "Due tomorrow",
+  "Ready now",
+  "Promised Friday morning",
+  "Parts ETA Wednesday",
+  "Hold until paid",
+] as const;
+
 export type CartJob = {
   id: string;
   customerName: string;
