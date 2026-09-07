@@ -339,10 +339,10 @@ function JobEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 p-3 sm:items-center">
+    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-black/70 p-3 sm:items-center">
       <form
         onSubmit={submit}
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-2xl"
+        className="my-auto w-full max-w-2xl overflow-visible rounded-2xl border border-border bg-surface p-5 shadow-2xl"
       >
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-base text-muted">
@@ -374,20 +374,11 @@ function JobEditor({
             />
           </Field>
           <Field label="Status (Housecall Pro pipeline)" htmlFor="status">
-            <select
+            <StatusPicker
               id="status"
               value={draft.status}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, status: event.target.value }))
-              }
-              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
-            >
-              {PIPELINE_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+              onChange={(status) => setDraft((current) => ({ ...current, status }))}
+            />
           </Field>
           <Field label="Next action" htmlFor="nextAction">
             <input
@@ -484,6 +475,65 @@ function ConfirmDelete({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusPicker({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (status: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        id={id}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex min-h-14 w-full items-center justify-between rounded-xl border border-border bg-background px-4 text-left text-lg"
+      >
+        <span>{value}</span>
+        <span className="ml-3 text-muted" aria-hidden>
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open ? (
+        <ul
+          role="listbox"
+          aria-labelledby={id}
+          className="absolute left-0 right-0 z-50 mt-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-background py-1 shadow-2xl"
+        >
+          {PIPELINE_STATUSES.map((status) => {
+            const selected = status === value;
+            return (
+              <li key={status}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(status);
+                    setOpen(false);
+                  }}
+                  className={`flex min-h-12 w-full items-center px-4 text-left text-base ${
+                    selected ? "bg-accent text-accent-ink font-semibold" : "hover:bg-surface-2"
+                  }`}
+                >
+                  {status}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }
