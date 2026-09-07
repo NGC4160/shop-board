@@ -15,6 +15,13 @@ Each row is split like this:
 
 On tablet/phone, customer + job stay the header / left block; the other fields sit below or to the right.
 
+Click a column header to sort. Click again to flip A–Z / Z–A. The last sort is remembered in the browser.
+
+- **Customer name, Primary tech, Next action:** A–Z / Z–A
+- **Job number:** numeric-aware (1842 before 18510)
+- **Status:** two modes — Housecall Pro pipeline order (New Job before Completed) **and** plain A–Z / Z–A. Click Status to cycle pipeline ▲ → pipeline ▼ → A–Z → Z–A, or use the Pipeline / A–Z buttons.
+- **Time expectation:** best-effort date/relative parse (`today`, weekday, `4:00 PM`); otherwise A–Z
+
 ## Primary tech
 
 Dropdown of current NGC field techs from Housecall Pro. Provisional names from the last known HCP team (2026-09-02), until Shop confirms the live list:

@@ -13,13 +13,24 @@ import {
   isPrimaryTech,
   jobToDraft,
   saveJobs,
-  sortJobs,
   statusTone,
   subscribeJobs,
   type CartJob,
   type CartJobDraft,
   type StatusTone,
 } from "@/lib/jobs";
+import {
+  getServerSortSnapshot,
+  getSortSnapshot,
+  saveSort,
+  setStatusSortMode,
+  sortJobsBy,
+  subscribeSort,
+  toggleSort,
+  type SortColumn,
+  type SortState,
+  type StatusSortMode,
+} from "@/lib/sort";
 
 const STATUS_CHIP: Record<StatusTone, string> = {
   new: "bg-wait text-accent-ink",
@@ -46,6 +57,7 @@ const STATUS_CHIP: Record<StatusTone, string> = {
 
 export function ShopBoard() {
   const jobs = useSyncExternalStore(subscribeJobs, getJobsSnapshot, getServerJobsSnapshot);
+  const sort = useSyncExternalStore(subscribeSort, getSortSnapshot, getServerSortSnapshot);
   const [editor, setEditor] = useState<
     | { mode: "create" }
     | { mode: "edit"; job: CartJob }
@@ -54,10 +66,16 @@ export function ShopBoard() {
   >(null);
 
   const persist = (next: CartJob[]) => {
-    saveJobs(sortJobs(next));
+    saveJobs(next);
   };
 
-  const visibleJobs = useMemo(() => sortJobs(jobs), [jobs]);
+  const visibleJobs = useMemo(() => sortJobsBy(jobs, sort), [jobs, sort]);
+  const changeSort = (column: SortColumn) => {
+    saveSort(toggleSort(sort, column));
+  };
+  const changeStatusMode = (mode: StatusSortMode) => {
+    saveSort(setStatusSortMode(sort, mode));
+  };
   const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
   const saveDraft = (draft: CartJobDraft, existing?: CartJob) => {
@@ -108,8 +126,17 @@ export function ShopBoard() {
           <EmptyState onAdd={() => setEditor({ mode: "create" })} />
         ) : (
           <>
+            <SortBar
+              sort={sort}
+              onSort={changeSort}
+              onStatusMode={changeStatusMode}
+              className="mb-4 lg:hidden"
+            />
             <DesktopTable
               jobs={visibleJobs}
+              sort={sort}
+              onSort={changeSort}
+              onStatusMode={changeStatusMode}
               onEdit={(job) => setEditor({ mode: "edit", job })}
               onDelete={(job) => setEditor({ mode: "delete", job })}
             />
@@ -180,28 +207,213 @@ function IdentityBlock({ job, compact = false }: { job: CartJob; compact?: boole
   );
 }
 
+const SORT_LABELS: { column: SortColumn; label: string }[] = [
+  { column: "customerName", label: "Customer name" },
+  { column: "jobNumber", label: "Job number" },
+  { column: "primaryTech", label: "Primary tech" },
+  { column: "status", label: "Status" },
+  { column: "nextAction", label: "Next action" },
+  { column: "timeExpectation", label: "Time expectation" },
+];
+
+function sortMarker(sort: SortState, column: SortColumn): string {
+  if (sort.column !== column) return "⇅";
+  if (column === "status") {
+    const mode = sort.statusMode === "alpha" ? "A–Z" : "Pipeline";
+    return `${mode} ${sort.direction === "asc" ? "▲" : "▼"}`;
+  }
+  if (column === "jobNumber") {
+    return sort.direction === "asc" ? "1–9 ▲" : "9–1 ▼";
+  }
+  return sort.direction === "asc" ? "A–Z ▲" : "Z–A ▼";
+}
+
+function SortHeader({
+  column,
+  label,
+  sort,
+  onSort,
+}: {
+  column: SortColumn;
+  label: string;
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+}) {
+  const active = sort.column === column;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      aria-pressed={active}
+      className={`inline-flex min-h-12 items-center gap-2 rounded-lg px-1 text-left font-semibold hover:text-foreground ${
+        active ? "text-accent" : "text-muted"
+      }`}
+    >
+      <span>{label}</span>
+      <span aria-hidden className={active ? "text-accent" : "text-muted/70"}>
+        {sortMarker(sort, column)}
+      </span>
+    </button>
+  );
+}
+
+function StatusModeToggle({
+  sort,
+  onStatusMode,
+}: {
+  sort: SortState;
+  onStatusMode: (mode: StatusSortMode) => void;
+}) {
+  const active = sort.column === "status";
+  return (
+    <div className="flex flex-wrap gap-1">
+      <button
+        type="button"
+        onClick={() => onStatusMode("pipeline")}
+        className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${
+          active && sort.statusMode === "pipeline"
+            ? "bg-accent text-accent-ink"
+            : "border border-border text-muted"
+        }`}
+      >
+        Pipeline
+      </button>
+      <button
+        type="button"
+        onClick={() => onStatusMode("alpha")}
+        className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${
+          active && sort.statusMode === "alpha"
+            ? "bg-accent text-accent-ink"
+            : "border border-border text-muted"
+        }`}
+      >
+        A–Z
+      </button>
+    </div>
+  );
+}
+
+function SortBar({
+  sort,
+  onSort,
+  onStatusMode,
+  className = "",
+}: {
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+  onStatusMode: (mode: StatusSortMode) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Sort by</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {SORT_LABELS.map(({ column, label }) => (
+          <SortHeader key={column} column={column} label={label} sort={sort} onSort={onSort} />
+        ))}
+        <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
+      </div>
+    </div>
+  );
+}
+
 function DesktopTable({
   jobs,
+  sort,
+  onSort,
+  onStatusMode,
   onEdit,
   onDelete,
 }: {
   jobs: CartJob[];
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+  onStatusMode: (mode: StatusSortMode) => void;
   onEdit: (job: CartJob) => void;
   onDelete: (job: CartJob) => void;
 }) {
   return (
     <div className="hidden overflow-x-auto rounded-2xl border border-border bg-surface lg:block">
       <table className="w-full min-w-[1080px] border-collapse text-left">
-        <thead className="bg-surface-2 text-base text-muted">
+        <thead className="bg-surface-2 text-base">
           <tr>
-            <th className="sticky left-0 z-20 min-w-56 border-r border-border bg-surface-2 px-4 py-4 font-semibold shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
-              Customer / job
+            <th
+              aria-sort={
+                sort.column === "customerName" || sort.column === "jobNumber"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="sticky left-0 z-20 min-w-56 border-r border-border bg-surface-2 px-4 py-3 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]"
+            >
+              <div className="flex flex-col items-start gap-1">
+                <SortHeader
+                  column="customerName"
+                  label="Customer name"
+                  sort={sort}
+                  onSort={onSort}
+                />
+                <SortHeader column="jobNumber" label="Job number" sort={sort} onSort={onSort} />
+              </div>
             </th>
-            <th className="px-4 py-4 font-semibold">Primary tech</th>
-            <th className="px-4 py-4 font-semibold">Status</th>
-            <th className="px-4 py-4 font-semibold">Next action</th>
-            <th className="px-4 py-4 font-semibold">Time expectation</th>
-            <th className="px-4 py-4 font-semibold">
+            <th
+              aria-sort={
+                sort.column === "primaryTech"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <SortHeader column="primaryTech" label="Primary tech" sort={sort} onSort={onSort} />
+            </th>
+            <th
+              aria-sort={
+                sort.column === "status"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <div className="flex flex-col items-start gap-1">
+                <SortHeader column="status" label="Status" sort={sort} onSort={onSort} />
+                <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
+              </div>
+            </th>
+            <th
+              aria-sort={
+                sort.column === "nextAction"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <SortHeader column="nextAction" label="Next action" sort={sort} onSort={onSort} />
+            </th>
+            <th
+              aria-sort={
+                sort.column === "timeExpectation"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <SortHeader
+                column="timeExpectation"
+                label="Time expectation"
+                sort={sort}
+                onSort={onSort}
+              />
+            </th>
+            <th className="px-4 py-3">
               <span className="sr-only">Actions</span>
             </th>
           </tr>
