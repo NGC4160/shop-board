@@ -1,22 +1,21 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
+  NEXT_ACTION_PRESETS,
   PIPELINE_STATUSES,
   PRIMARY_TECHS,
+  TIME_PRESETS,
+  createId,
   draftToJob,
   emptyDraft,
   getJobsSnapshot,
   getServerJobsSnapshot,
   isClosedStatus,
-  isPipelineStatus,
-  isPrimaryTech,
-  jobToDraft,
   saveJobs,
   statusTone,
   subscribeJobs,
   type CartJob,
-  type CartJobDraft,
   type StatusTone,
 } from "@/lib/jobs";
 import {
@@ -55,15 +54,14 @@ const STATUS_CHIP: Record<StatusTone, string> = {
   custom: "bg-surface-2 text-foreground border border-border",
 };
 
+const OTHER_VALUE = "__other__";
+const inputClass =
+  "min-h-10 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground";
+
 export function ShopBoard() {
   const jobs = useSyncExternalStore(subscribeJobs, getJobsSnapshot, getServerJobsSnapshot);
   const sort = useSyncExternalStore(subscribeSort, getSortSnapshot, getServerSortSnapshot);
-  const [editor, setEditor] = useState<
-    | { mode: "create" }
-    | { mode: "edit"; job: CartJob }
-    | { mode: "delete"; job: CartJob; returnTo?: "edit" }
-    | null
-  >(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const persist = (next: CartJob[]) => {
     saveJobs(next);
@@ -78,143 +76,282 @@ export function ShopBoard() {
   };
   const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
-  const saveDraft = (draft: CartJobDraft, existing?: CartJob) => {
-    const nextJob = draftToJob(draft, existing);
-    if (existing) {
-      persist(jobs.map((job) => (job.id === existing.id ? nextJob : job)));
-    } else {
-      persist([nextJob, ...jobs]);
-    }
-    setEditor(null);
+  const updateJob = (id: string, patch: Partial<CartJob>) => {
+    persist(
+      jobs.map((job) =>
+        job.id === id ? { ...job, ...patch, updatedAt: Date.now() } : job,
+      ),
+    );
+  };
+
+  const addRow = () => {
+    persist([
+      {
+        ...draftToJob(emptyDraft),
+        id: createId(),
+        customerName: "",
+        jobNumber: "",
+      },
+      ...jobs,
+    ]);
   };
 
   const deleteJob = (id: string) => {
     persist(jobs.filter((job) => job.id !== id));
-    setEditor(null);
+    setPendingDelete(null);
   };
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-border bg-surface px-4 py-5 sm:px-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="border-b border-border bg-surface px-3 py-4 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
               Covington, LA
             </p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
               Neighborhood Golf Carts
             </h1>
-            <p className="mt-1 text-lg text-muted">Shop Board — carts in the shop</p>
+            <p className="mt-1 text-base text-muted">Shop Board — spreadsheet of carts in the shop</p>
           </div>
-          <div className="flex flex-col gap-3 sm:items-end">
-            <p className="text-base text-muted">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted">
               {openCount} open · {visibleJobs.length} total
             </p>
             <button
               type="button"
-              onClick={() => setEditor({ mode: "create" })}
-              className="min-h-14 rounded-xl bg-accent px-6 text-lg font-bold text-accent-ink shadow-[0_0_0_1px_#8a7008] hover:brightness-110"
+              onClick={addRow}
+              className="min-h-11 rounded-lg bg-accent px-5 text-base font-bold text-accent-ink"
             >
-              Add cart
+              Add row
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5 sm:px-6">
+      <main className="flex-1 px-2 py-3 sm:px-4">
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+          <table className="w-full min-w-[1180px] border-collapse text-left">
+            <thead className="bg-surface-2 text-sm">
+              <tr>
+                <th
+                  aria-sort={
+                    sort.column === "customerName" || sort.column === "jobNumber"
+                      ? headerSort(sort, sort.column)
+                      : "none"
+                  }
+                  className="sticky left-0 z-20 min-w-52 border-r border-border bg-surface-2 px-2 py-2 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]"
+                >
+                  <div className="flex flex-col items-start gap-0.5">
+                    <SortHeader
+                      column="customerName"
+                      label="Customer name"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
+                    <SortHeader
+                      column="jobNumber"
+                      label="Job number"
+                      sort={sort}
+                      onSort={changeSort}
+                    />
+                  </div>
+                </th>
+                <th aria-sort={headerSort(sort, "primaryTech")} className="px-2 py-2">
+                  <SortHeader
+                    column="primaryTech"
+                    label="Primary tech"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                </th>
+                <th aria-sort={headerSort(sort, "status")} className="px-2 py-2">
+                  <div className="flex flex-col items-start gap-1">
+                    <SortHeader column="status" label="Status" sort={sort} onSort={changeSort} />
+                    <StatusModeToggle sort={sort} onStatusMode={changeStatusMode} />
+                  </div>
+                </th>
+                <th aria-sort={headerSort(sort, "nextAction")} className="px-2 py-2">
+                  <SortHeader
+                    column="nextAction"
+                    label="Next action"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                </th>
+                <th aria-sort={headerSort(sort, "timeExpectation")} className="px-2 py-2">
+                  <SortHeader
+                    column="timeExpectation"
+                    label="Time expectation"
+                    sort={sort}
+                    onSort={changeSort}
+                  />
+                </th>
+                <th className="px-2 py-2">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleJobs.map((job) => (
+                <tr key={job.id} className="border-t border-border align-top">
+                  <td className="sticky left-0 z-10 border-r border-border bg-surface px-2 py-2 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
+                    <div className="flex min-w-48 flex-col gap-1">
+                      <input
+                        aria-label="Customer name"
+                        value={job.customerName}
+                        onChange={(event) =>
+                          updateJob(job.id, { customerName: event.target.value })
+                        }
+                        placeholder="Customer name"
+                        className={`${inputClass} font-semibold`}
+                      />
+                      <input
+                        aria-label="Job number"
+                        value={job.jobNumber}
+                        onChange={(event) =>
+                          updateJob(job.id, { jobNumber: event.target.value })
+                        }
+                        placeholder="Job #"
+                        className={`${inputClass} font-mono`}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <ComboCell
+                      value={job.primaryTech}
+                      options={PRIMARY_TECHS}
+                      emptyLabel="Unassigned"
+                      placeholder="Type a tech name"
+                      onChange={(primaryTech) => updateJob(job.id, { primaryTech })}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <ComboCell
+                      value={job.status}
+                      options={PIPELINE_STATUSES}
+                      placeholder="Type a status"
+                      badge={
+                        <span
+                          className={`inline-flex min-h-6 items-center rounded-full px-2 text-xs font-bold ${STATUS_CHIP[statusTone(job.status)]}`}
+                        >
+                          {job.status || "—"}
+                        </span>
+                      }
+                      onChange={(status) => updateJob(job.id, { status })}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <ComboCell
+                      value={job.nextAction}
+                      options={NEXT_ACTION_PRESETS}
+                      placeholder="What happens next?"
+                      onChange={(nextAction) => updateJob(job.id, { nextAction })}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <ComboCell
+                      value={job.timeExpectation}
+                      options={TIME_PRESETS}
+                      placeholder="ETA / due / promised"
+                      onChange={(timeExpectation) => updateJob(job.id, { timeExpectation })}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    {pendingDelete === job.id ? (
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => deleteJob(job.id)}
+                          className="min-h-10 rounded-md bg-danger px-3 text-sm font-bold text-accent-ink"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingDelete(null)}
+                          className="min-h-10 rounded-md border border-border px-3 text-sm font-semibold"
+                        >
+                          Keep
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingDelete(job.id)}
+                        className="min-h-10 rounded-md border border-danger/50 px-3 text-sm font-semibold text-danger"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {visibleJobs.length === 0 ? (
-          <EmptyState onAdd={() => setEditor({ mode: "create" })} />
-        ) : (
-          <>
-            <SortBar
-              sort={sort}
-              onSort={changeSort}
-              onStatusMode={changeStatusMode}
-              className="mb-4 lg:hidden"
-            />
-            <DesktopTable
-              jobs={visibleJobs}
-              sort={sort}
-              onSort={changeSort}
-              onStatusMode={changeStatusMode}
-              onEdit={(job) => setEditor({ mode: "edit", job })}
-              onDelete={(job) => setEditor({ mode: "delete", job })}
-            />
-            <MobileCards
-              jobs={visibleJobs}
-              onEdit={(job) => setEditor({ mode: "edit", job })}
-              onDelete={(job) => setEditor({ mode: "delete", job })}
-            />
-          </>
-        )}
+          <p className="mt-4 text-base text-muted">No carts yet. Use Add row to start the board.</p>
+        ) : null}
       </main>
-
-      {editor?.mode === "create" || editor?.mode === "edit" ? (
-        <JobEditor
-          title={editor.mode === "create" ? "Add cart to the board" : "Edit cart"}
-          initial={editor.mode === "edit" ? jobToDraft(editor.job) : emptyDraft}
-          onCancel={() => setEditor(null)}
-          onSave={(draft) =>
-            saveDraft(draft, editor.mode === "edit" ? editor.job : undefined)
-          }
-          onDelete={
-            editor.mode === "edit"
-              ? () => setEditor({ mode: "delete", job: editor.job, returnTo: "edit" })
-              : undefined
-          }
-        />
-      ) : null}
-
-      {editor?.mode === "delete" ? (
-        <ConfirmDelete
-          job={editor.job}
-          onCancel={() =>
-            setEditor(
-              editor.returnTo === "edit" ? { mode: "edit", job: editor.job } : null,
-            )
-          }
-          onConfirm={() => deleteJob(editor.job.id)}
-        />
-      ) : null}
     </div>
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function ComboCell({
+  value,
+  options,
+  onChange,
+  emptyLabel,
+  placeholder,
+  badge,
+}: {
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  emptyLabel?: string;
+  placeholder?: string;
+  badge?: ReactNode;
+}) {
+  const known =
+    (emptyLabel !== undefined && value === "") || options.includes(value);
+  const selectValue = known ? value : OTHER_VALUE;
+
   return (
-    <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-16 text-center">
-      <p className="text-2xl font-semibold">No carts on the board</p>
-      <p className="mt-2 text-lg text-muted">Add a cart when a job comes in.</p>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="mt-6 min-h-14 rounded-xl bg-accent px-6 text-lg font-bold text-accent-ink"
+    <div className="flex min-w-44 flex-col gap-1">
+      {badge}
+      <select
+        aria-label="Choose a saved option"
+        value={selectValue}
+        onChange={(event) => {
+          if (event.target.value === OTHER_VALUE) return;
+          onChange(event.target.value);
+        }}
+        className={inputClass}
       >
-        Add cart
-      </button>
+        {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+        <option value={OTHER_VALUE}>Other…</option>
+      </select>
+      <input
+        aria-label="Free text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={inputClass}
+      />
     </div>
   );
 }
 
-function IdentityBlock({ job, compact = false }: { job: CartJob; compact?: boolean }) {
-  return (
-    <div>
-      <p className={compact ? "text-xl font-bold leading-tight" : "text-xl font-semibold leading-tight"}>
-        {job.customerName}
-      </p>
-      <p className="mt-1 font-mono text-base text-muted">#{job.jobNumber}</p>
-    </div>
-  );
+function headerSort(sort: SortState, column: SortColumn): "ascending" | "descending" | "none" {
+  if (sort.column !== column) return "none";
+  return sort.direction === "asc" ? "ascending" : "descending";
 }
-
-const SORT_LABELS: { column: SortColumn; label: string }[] = [
-  { column: "customerName", label: "Customer name" },
-  { column: "jobNumber", label: "Job number" },
-  { column: "primaryTech", label: "Primary tech" },
-  { column: "status", label: "Status" },
-  { column: "nextAction", label: "Next action" },
-  { column: "timeExpectation", label: "Time expectation" },
-];
 
 function sortMarker(sort: SortState, column: SortColumn): string {
   if (sort.column !== column) return "⇅";
@@ -245,7 +382,7 @@ function SortHeader({
       type="button"
       onClick={() => onSort(column)}
       aria-pressed={active}
-      className={`inline-flex min-h-12 items-center gap-2 rounded-lg px-1 text-left font-semibold hover:text-foreground ${
+      className={`inline-flex min-h-9 items-center gap-1 rounded px-1 text-left text-sm font-semibold hover:text-foreground ${
         active ? "text-accent" : "text-muted"
       }`}
     >
@@ -270,7 +407,7 @@ function StatusModeToggle({
       <button
         type="button"
         onClick={() => onStatusMode("pipeline")}
-        className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${
+        className={`min-h-8 rounded px-2 text-xs font-semibold ${
           active && sort.statusMode === "pipeline"
             ? "bg-accent text-accent-ink"
             : "border border-border text-muted"
@@ -281,7 +418,7 @@ function StatusModeToggle({
       <button
         type="button"
         onClick={() => onStatusMode("alpha")}
-        className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${
+        className={`min-h-8 rounded px-2 text-xs font-semibold ${
           active && sort.statusMode === "alpha"
             ? "bg-accent text-accent-ink"
             : "border border-border text-muted"
@@ -289,521 +426,6 @@ function StatusModeToggle({
       >
         A–Z
       </button>
-    </div>
-  );
-}
-
-function SortBar({
-  sort,
-  onSort,
-  onStatusMode,
-  className = "",
-}: {
-  sort: SortState;
-  onSort: (column: SortColumn) => void;
-  onStatusMode: (mode: StatusSortMode) => void;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Sort by</p>
-      <div className="flex flex-wrap items-center gap-2">
-        {SORT_LABELS.map(({ column, label }) => (
-          <SortHeader key={column} column={column} label={label} sort={sort} onSort={onSort} />
-        ))}
-        <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
-      </div>
-    </div>
-  );
-}
-
-function DesktopTable({
-  jobs,
-  sort,
-  onSort,
-  onStatusMode,
-  onEdit,
-  onDelete,
-}: {
-  jobs: CartJob[];
-  sort: SortState;
-  onSort: (column: SortColumn) => void;
-  onStatusMode: (mode: StatusSortMode) => void;
-  onEdit: (job: CartJob) => void;
-  onDelete: (job: CartJob) => void;
-}) {
-  return (
-    <div className="hidden overflow-x-auto rounded-2xl border border-border bg-surface lg:block">
-      <table className="w-full min-w-[1080px] border-collapse text-left">
-        <thead className="bg-surface-2 text-base">
-          <tr>
-            <th
-              aria-sort={
-                sort.column === "customerName" || sort.column === "jobNumber"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              className="sticky left-0 z-20 min-w-56 border-r border-border bg-surface-2 px-4 py-3 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]"
-            >
-              <div className="flex flex-col items-start gap-1">
-                <SortHeader
-                  column="customerName"
-                  label="Customer name"
-                  sort={sort}
-                  onSort={onSort}
-                />
-                <SortHeader column="jobNumber" label="Job number" sort={sort} onSort={onSort} />
-              </div>
-            </th>
-            <th
-              aria-sort={
-                sort.column === "primaryTech"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              className="px-4 py-3"
-            >
-              <SortHeader column="primaryTech" label="Primary tech" sort={sort} onSort={onSort} />
-            </th>
-            <th
-              aria-sort={
-                sort.column === "status"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              className="px-4 py-3"
-            >
-              <div className="flex flex-col items-start gap-1">
-                <SortHeader column="status" label="Status" sort={sort} onSort={onSort} />
-                <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
-              </div>
-            </th>
-            <th
-              aria-sort={
-                sort.column === "nextAction"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              className="px-4 py-3"
-            >
-              <SortHeader column="nextAction" label="Next action" sort={sort} onSort={onSort} />
-            </th>
-            <th
-              aria-sort={
-                sort.column === "timeExpectation"
-                  ? sort.direction === "asc"
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              className="px-4 py-3"
-            >
-              <SortHeader
-                column="timeExpectation"
-                label="Time expectation"
-                sort={sort}
-                onSort={onSort}
-              />
-            </th>
-            <th className="px-4 py-3">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {jobs.map((job) => (
-            <tr key={job.id} className="border-t border-border">
-              <td className="sticky left-0 z-10 border-r border-border bg-surface px-4 py-5 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
-                <IdentityBlock job={job} />
-              </td>
-              <td className="px-4 py-5 text-lg">
-                <PrimaryTechLabel name={job.primaryTech} />
-              </td>
-              <td className="px-4 py-5">
-                <StatusBadge status={job.status} />
-              </td>
-              <td className="px-4 py-5 text-lg">{job.nextAction || "—"}</td>
-              <td className="px-4 py-5 text-lg">{job.timeExpectation || "—"}</td>
-              <td className="px-4 py-5">
-                <RowActions onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function MobileCards({
-  jobs,
-  onEdit,
-  onDelete,
-}: {
-  jobs: CartJob[];
-  onEdit: (job: CartJob) => void;
-  onDelete: (job: CartJob) => void;
-}) {
-  return (
-    <ul className="grid gap-4 lg:hidden">
-      {jobs.map((job) => (
-        <li key={job.id} className="rounded-2xl border border-border bg-surface p-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="sm:w-52 sm:shrink-0 sm:border-r sm:border-border sm:pr-4">
-              <IdentityBlock job={job} compact />
-            </div>
-            <div className="min-w-0 flex-1">
-              <dl className="grid gap-3 text-lg">
-                <div>
-                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                    Primary tech
-                  </dt>
-                  <dd className="mt-1">
-                    <PrimaryTechLabel name={job.primaryTech} />
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                    Status
-                  </dt>
-                  <dd className="mt-1">
-                    <StatusBadge status={job.status} />
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                    Next action
-                  </dt>
-                  <dd className="mt-1">{job.nextAction || "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                    Time expectation
-                  </dt>
-                  <dd className="mt-1">{job.timeExpectation || "—"}</dd>
-                </div>
-              </dl>
-              <div className="mt-4">
-                <RowActions onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
-              </div>
-            </div>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function PrimaryTechLabel({ name }: { name: string }) {
-  if (!name) {
-    return <span className="text-muted">Unassigned</span>;
-  }
-  return <span>{name}</span>;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-flex min-h-10 items-center rounded-full px-3 py-1 text-sm font-bold ${STATUS_CHIP[statusTone(status)]}`}
-    >
-      {status}
-    </span>
-  );
-}
-
-function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={onEdit}
-        className="min-h-12 min-w-20 rounded-xl border border-border bg-surface-2 px-4 text-base font-semibold hover:border-accent"
-      >
-        Edit
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="min-h-12 min-w-20 rounded-xl border border-danger/50 px-4 text-base font-semibold text-danger hover:bg-danger/10"
-      >
-        Delete
-      </button>
-    </div>
-  );
-}
-
-function JobEditor({
-  title,
-  initial,
-  onCancel,
-  onSave,
-  onDelete,
-}: {
-  title: string;
-  initial: CartJobDraft;
-  onCancel: () => void;
-  onSave: (draft: CartJobDraft) => void;
-  onDelete?: () => void;
-}) {
-  const [draft, setDraft] = useState<CartJobDraft>({
-    ...initial,
-    primaryTech: isPrimaryTech(initial.primaryTech) ? initial.primaryTech : "",
-    status: isPipelineStatus(initial.status) ? initial.status : "New Job",
-  });
-  const [error, setError] = useState("");
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!draft.customerName.trim() || !draft.jobNumber.trim()) {
-      setError("Customer name and job number are required.");
-      return;
-    }
-    onSave({
-      ...draft,
-      status: isPipelineStatus(draft.status) ? draft.status : "New Job",
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-black/70 p-3 sm:items-center">
-      <form
-        onSubmit={submit}
-        className="my-auto w-full max-w-2xl overflow-visible rounded-2xl border border-border bg-surface p-5 shadow-2xl"
-      >
-        <h2 className="text-2xl font-bold">{title}</h2>
-        <p className="mt-1 text-base text-muted">
-          Housecall Pro job number, primary tech, pipeline status, next step, and when it is due.
-        </p>
-
-        <div className="mt-5 grid gap-4">
-          <Field label="Customer name" htmlFor="customerName">
-            <input
-              id="customerName"
-              value={draft.customerName}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, customerName: event.target.value }))
-              }
-              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
-              placeholder="Who owns the cart?"
-              autoComplete="name"
-            />
-          </Field>
-          <Field label="Job number (Housecall Pro)" htmlFor="jobNumber">
-            <input
-              id="jobNumber"
-              value={draft.jobNumber}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, jobNumber: event.target.value }))
-              }
-              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 font-mono text-lg"
-              placeholder="1842"
-            />
-          </Field>
-          <Field label="Primary tech" htmlFor="primaryTech">
-            <select
-              id="primaryTech"
-              value={draft.primaryTech}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, primaryTech: event.target.value }))
-              }
-              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
-            >
-              <option value="">Unassigned</option>
-              {PRIMARY_TECHS.map((tech) => (
-                <option key={tech} value={tech}>
-                  {tech}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Status (Housecall Pro pipeline)" htmlFor="status">
-            <StatusPicker
-              id="status"
-              value={draft.status}
-              onChange={(status) => setDraft((current) => ({ ...current, status }))}
-            />
-          </Field>
-          <Field label="Next action" htmlFor="nextAction">
-            <input
-              id="nextAction"
-              value={draft.nextAction}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, nextAction: event.target.value }))
-              }
-              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
-              placeholder="What happens next?"
-            />
-          </Field>
-          <Field label="Time expectation (ETA / due / promised)" htmlFor="timeExpectation">
-            <input
-              id="timeExpectation"
-              value={draft.timeExpectation}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  timeExpectation: event.target.value,
-                }))
-              }
-              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
-              placeholder="Due today 4:00 PM"
-            />
-          </Field>
-        </div>
-
-        {error ? <p className="mt-4 text-base font-semibold text-danger">{error}</p> : null}
-
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-          {onDelete ? (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="min-h-14 rounded-xl border border-danger/50 px-5 text-lg font-semibold text-danger"
-            >
-              Delete cart
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="min-h-14 rounded-xl border border-border px-5 text-lg font-semibold"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="min-h-14 rounded-xl bg-accent px-6 text-lg font-bold text-accent-ink"
-            >
-              Save cart
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function ConfirmDelete({
-  job,
-  onCancel,
-  onConfirm,
-}: {
-  job: CartJob;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 sm:items-center">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6">
-        <h2 className="text-2xl font-bold">Delete this cart?</h2>
-        <p className="mt-3 text-lg text-muted">
-          {job.customerName} · Job #{job.jobNumber} will be removed from the board.
-        </p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="min-h-14 rounded-xl border border-border px-5 text-lg font-semibold"
-          >
-            Keep cart
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="min-h-14 rounded-xl bg-danger px-5 text-lg font-bold text-accent-ink"
-          >
-            Delete cart
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusPicker({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: string;
-  onChange: (status: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <button
-        id={id}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-        className="flex min-h-14 w-full items-center justify-between rounded-xl border border-border bg-background px-4 text-left text-lg"
-      >
-        <span>{value}</span>
-        <span className="ml-3 text-muted" aria-hidden>
-          {open ? "▲" : "▼"}
-        </span>
-      </button>
-      {open ? (
-        <ul
-          role="listbox"
-          aria-labelledby={id}
-          className="absolute left-0 right-0 z-50 mt-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-background py-1 shadow-2xl"
-        >
-          {PIPELINE_STATUSES.map((status) => {
-            const selected = status === value;
-            return (
-              <li key={status}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => {
-                    onChange(status);
-                    setOpen(false);
-                  }}
-                  className={`flex min-h-12 w-full items-center px-4 text-left text-base ${
-                    selected ? "bg-accent text-accent-ink font-semibold" : "hover:bg-surface-2"
-                  }`}
-                >
-                  {status}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  children: ReactNode;
-}) {
-  return (
-    <div>
-      <label htmlFor={htmlFor} className="mb-2 block text-base font-semibold">
-        {label}
-      </label>
-      {children}
     </div>
   );
 }
