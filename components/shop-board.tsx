@@ -19,20 +19,25 @@ import {
   type StatusTone,
 } from "@/lib/jobs";
 
-const CUSTOM_STATUS_VALUE = "__custom__";
-
 const STATUS_CHIP: Record<StatusTone, string> = {
   new: "bg-wait text-accent-ink",
   dropoff: "bg-wait text-accent-ink",
+  pictures: "bg-estimate text-accent-ink",
   ryan: "bg-bay text-accent-ink",
   deposit: "bg-deposit text-accent-ink",
   order: "bg-parts text-accent-ink",
   materials: "bg-parts text-accent-ink",
   scheduled: "bg-wait text-accent-ink",
+  callback: "bg-deposit text-accent-ink",
   queue: "bg-queue text-accent-ink",
   estimate: "bg-estimate text-accent-ink",
   progress: "bg-bay text-accent-ink",
+  approval: "bg-estimate text-accent-ink",
+  qc: "bg-queue text-accent-ink",
   payment: "bg-deposit text-accent-ink",
+  pickup: "bg-ready text-accent-ink",
+  invoice: "bg-wait text-accent-ink",
+  hold: "bg-surface-2 text-muted border border-border",
   done: "bg-surface-2 text-muted border border-border",
   custom: "bg-surface-2 text-foreground border border-border",
 };
@@ -315,12 +320,11 @@ function JobEditor({
   onSave: (draft: CartJobDraft) => void;
   onDelete?: () => void;
 }) {
-  const [draft, setDraft] = useState(initial);
-  const [customStatus, setCustomStatus] = useState(
-    isPipelineStatus(initial.status) ? "" : initial.status,
-  );
+  const [draft, setDraft] = useState<CartJobDraft>({
+    ...initial,
+    status: isPipelineStatus(initial.status) ? initial.status : "New Job",
+  });
   const [error, setError] = useState("");
-  const usingCustom = !isPipelineStatus(draft.status);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -328,13 +332,9 @@ function JobEditor({
       setError("Customer name and job number are required.");
       return;
     }
-    if (usingCustom && !customStatus.trim()) {
-      setError("Pick a Housecall Pro status, or type a custom one.");
-      return;
-    }
     onSave({
       ...draft,
-      status: usingCustom ? customStatus.trim() : draft.status,
+      status: isPipelineStatus(draft.status) ? draft.status : "New Job",
     });
   };
 
@@ -376,19 +376,10 @@ function JobEditor({
           <Field label="Status (Housecall Pro pipeline)" htmlFor="status">
             <select
               id="status"
-              value={usingCustom ? CUSTOM_STATUS_VALUE : draft.status}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (next === CUSTOM_STATUS_VALUE) {
-                  setDraft((current) => ({
-                    ...current,
-                    status: customStatus.trim() || CUSTOM_STATUS_VALUE,
-                  }));
-                  return;
-                }
-                setCustomStatus("");
-                setDraft((current) => ({ ...current, status: next }));
-              }}
+              value={draft.status}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, status: event.target.value }))
+              }
               className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
             >
               {PIPELINE_STATUSES.map((status) => (
@@ -396,23 +387,8 @@ function JobEditor({
                   {status}
                 </option>
               ))}
-              <option value={CUSTOM_STATUS_VALUE}>Other (type below)</option>
             </select>
           </Field>
-          {usingCustom ? (
-            <Field label="Custom status" htmlFor="customStatus">
-              <input
-                id="customStatus"
-                value={customStatus}
-                onChange={(event) => {
-                  setCustomStatus(event.target.value);
-                  setDraft((current) => ({ ...current, status: event.target.value }));
-                }}
-                className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
-                placeholder="Only if it is not on the Housecall Pro board"
-              />
-            </Field>
-          ) : null}
           <Field label="Next action" htmlFor="nextAction">
             <input
               id="nextAction"

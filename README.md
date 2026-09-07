@@ -17,23 +17,36 @@ On tablet/phone, customer + job stay the header / left block; the other fields s
 
 ## Statuses (Housecall Pro jobs pipeline)
 
-Status is a dropdown of the NGC Housecall Pro pipeline stages, in board order:
+Status is a dropdown of the live NGC Housecall Pro **Jobs** pipeline stages (Pipeline → Jobs), left to right. Labels are exact — no invented names, no hidden/off stages.
 
 1. New Job
 2. Customer drop off
-3. RYAN
+3. Pictures Needed
 4. Deposit Needed
-5. Need to Order Materials
-6. Waiting on Materials
-7. Scheduled
-8. Awaiting Queue
-9. Shop Queue
-10. Awaiting Estimate
+5. RYAN
+6. Need to Order Materials
+7. Waiting on Materials
+8. Unscheduled
+9. Scheduled
+10. Return Call Needed
 11. In Progress
-12. Awaiting Payment
-13. Completed
+12. Awaiting Queue
+13. Shop Queue
+14. JESSE- estimate ready to call
+15. Awaiting Estimate
+16. Awaiting Approval
+17. Awaiting Deposit
+18. Awaiting QC
+19. Completed
+20. Awaiting Payment
+21. Awaiting Return Delivery
+22. Customer pick up
+23. Need to Invoice
+24. Invoice Sent
+25. On Hold
+26. Invoice Paid
 
-Free-text status is a fallback only (Other). Seed rows use these pipeline labels.
+Seed rows use only these labels.
 
 v1 stores data in the browser (`localStorage`). The first load seeds example carts so the board is not empty. No login.
 

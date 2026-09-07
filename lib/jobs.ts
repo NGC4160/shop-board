@@ -1,20 +1,33 @@
-export const STORAGE_KEY = "ngc-shop-board-v2";
+export const STORAGE_KEY = "ngc-shop-board-v3";
 
-/** Housecall Pro jobs pipeline stages (NGC shop board, late Aug / early Sep 2026). */
+/** Live NGC Housecall Pro Jobs pipeline (Pipeline → Jobs), left to right. */
 export const PIPELINE_STATUSES = [
   "New Job",
   "Customer drop off",
-  "RYAN",
+  "Pictures Needed",
   "Deposit Needed",
+  "RYAN",
   "Need to Order Materials",
   "Waiting on Materials",
+  "Unscheduled",
   "Scheduled",
+  "Return Call Needed",
+  "In Progress",
   "Awaiting Queue",
   "Shop Queue",
+  "JESSE- estimate ready to call",
   "Awaiting Estimate",
-  "In Progress",
-  "Awaiting Payment",
+  "Awaiting Approval",
+  "Awaiting Deposit",
+  "Awaiting QC",
   "Completed",
+  "Awaiting Payment",
+  "Awaiting Return Delivery",
+  "Customer pick up",
+  "Need to Invoice",
+  "Invoice Sent",
+  "On Hold",
+  "Invoice Paid",
 ] as const;
 
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
@@ -111,8 +124,7 @@ export function isPipelineStatus(status: string): status is PipelineStatus {
 }
 
 export function isClosedStatus(status: string): boolean {
-  const normalized = status.toLowerCase();
-  return normalized === "completed" || normalized === "done";
+  return status === "Invoice Paid";
 }
 
 export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
@@ -209,15 +221,22 @@ export function saveJobs(jobs: CartJob[]): void {
 export type StatusTone =
   | "new"
   | "dropoff"
+  | "pictures"
   | "ryan"
   | "deposit"
   | "order"
   | "materials"
   | "scheduled"
+  | "callback"
   | "queue"
   | "estimate"
   | "progress"
+  | "approval"
+  | "qc"
   | "payment"
+  | "pickup"
+  | "invoice"
+  | "hold"
   | "done"
   | "custom";
 
@@ -227,26 +246,47 @@ export function statusTone(status: string): StatusTone {
       return "new";
     case "Customer drop off":
       return "dropoff";
+    case "Pictures Needed":
+      return "pictures";
+    case "Deposit Needed":
+    case "Awaiting Deposit":
+      return "deposit";
     case "RYAN":
       return "ryan";
-    case "Deposit Needed":
-      return "deposit";
     case "Need to Order Materials":
       return "order";
     case "Waiting on Materials":
       return "materials";
+    case "Unscheduled":
     case "Scheduled":
       return "scheduled";
+    case "Return Call Needed":
+      return "callback";
+    case "In Progress":
+      return "progress";
     case "Awaiting Queue":
     case "Shop Queue":
       return "queue";
+    case "JESSE- estimate ready to call":
     case "Awaiting Estimate":
       return "estimate";
-    case "In Progress":
-      return "progress";
+    case "Awaiting Approval":
+      return "approval";
+    case "Awaiting QC":
+      return "qc";
+    case "Completed":
+      return "done";
     case "Awaiting Payment":
       return "payment";
-    case "Completed":
+    case "Awaiting Return Delivery":
+    case "Customer pick up":
+      return "pickup";
+    case "Need to Invoice":
+    case "Invoice Sent":
+      return "invoice";
+    case "On Hold":
+      return "hold";
+    case "Invoice Paid":
       return "done";
     default:
       return "custom";
