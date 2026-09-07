@@ -24,14 +24,13 @@ Click a column header to sort. Click again to flip A–Z / Z–A. The last sort 
 
 ## Primary tech
 
-Dropdown of current NGC field techs from Housecall Pro. Provisional names from the last known HCP team (2026-09-02), until Shop confirms the live list:
+Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team & Permissions). Office Staff and other roles are not included.
 
-- Hayden Silva
-- Jesse Killian
 - Marlon Gray
 - Ryan Gorgoglione
+- Hayden Silva
 
-Unassigned is allowed. Seed rows use these names (one cart is unassigned).
+Unassigned is allowed. Seed rows use only these names (Trey Fontenot is unassigned).
 
 ## Statuses (Housecall Pro jobs pipeline)
 

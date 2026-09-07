@@ -1,4 +1,4 @@
-export const STORAGE_KEY = "ngc-shop-board-v4";
+export const STORAGE_KEY = "ngc-shop-board-v5";
 
 /** Live NGC Housecall Pro Jobs pipeline (Pipeline → Jobs), left to right. */
 export const PIPELINE_STATUSES = [
@@ -32,12 +32,11 @@ export const PIPELINE_STATUSES = [
 
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
-/** Provisional NGC field techs from Housecall Pro (2026-09-02), until Shop confirms live list. */
+/** Live NGC Housecall Pro Field Techs (Settings → Team & Permissions). */
 export const PRIMARY_TECHS = [
-  "Hayden Silva",
-  "Jesse Killian",
   "Marlon Gray",
   "Ryan Gorgoglione",
+  "Hayden Silva",
 ] as const;
 
 export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
@@ -110,7 +109,7 @@ export const seedJobs: CartJob[] = [
     id: "seed-1839",
     customerName: "The Landing HOA",
     jobNumber: "1839",
-    primaryTech: "Jesse Killian",
+    primaryTech: "Hayden Silva",
     status: "Awaiting Payment",
     nextAction: "Call customer — cart is ready",
     timeExpectation: "Ready now",
