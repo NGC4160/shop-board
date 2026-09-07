@@ -2,11 +2,13 @@
 
 import { useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import {
-  SUGGESTED_STATUSES,
+  PIPELINE_STATUSES,
   draftToJob,
   emptyDraft,
   getJobsSnapshot,
   getServerJobsSnapshot,
+  isClosedStatus,
+  isPipelineStatus,
   jobToDraft,
   saveJobs,
   sortJobs,
@@ -14,15 +16,24 @@ import {
   subscribeJobs,
   type CartJob,
   type CartJobDraft,
+  type StatusTone,
 } from "@/lib/jobs";
 
-const STATUS_CHIP: Record<ReturnType<typeof statusTone>, string> = {
-  bay: "bg-bay text-accent-ink",
-  parts: "bg-parts text-accent-ink",
+const CUSTOM_STATUS_VALUE = "__custom__";
+
+const STATUS_CHIP: Record<StatusTone, string> = {
+  new: "bg-wait text-accent-ink",
+  dropoff: "bg-wait text-accent-ink",
+  ryan: "bg-bay text-accent-ink",
   deposit: "bg-deposit text-accent-ink",
-  ready: "bg-ready text-accent-ink",
+  order: "bg-parts text-accent-ink",
+  materials: "bg-parts text-accent-ink",
+  scheduled: "bg-wait text-accent-ink",
+  queue: "bg-queue text-accent-ink",
+  estimate: "bg-estimate text-accent-ink",
+  progress: "bg-bay text-accent-ink",
+  payment: "bg-deposit text-accent-ink",
   done: "bg-surface-2 text-muted border border-border",
-  wait: "bg-wait text-accent-ink",
   custom: "bg-surface-2 text-foreground border border-border",
 };
 
@@ -40,7 +51,7 @@ export function ShopBoard() {
   };
 
   const visibleJobs = useMemo(() => sortJobs(jobs), [jobs]);
-  const openCount = visibleJobs.filter((job) => job.status.toLowerCase() !== "done").length;
+  const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
   const saveDraft = (draft: CartJobDraft, existing?: CartJob) => {
     const nextJob = draftToJob(draft, existing);
@@ -151,6 +162,17 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   );
 }
 
+function IdentityBlock({ job, compact = false }: { job: CartJob; compact?: boolean }) {
+  return (
+    <div>
+      <p className={compact ? "text-xl font-bold leading-tight" : "text-xl font-semibold leading-tight"}>
+        {job.customerName}
+      </p>
+      <p className="mt-1 font-mono text-base text-muted">#{job.jobNumber}</p>
+    </div>
+  );
+}
+
 function DesktopTable({
   jobs,
   onEdit,
@@ -162,11 +184,12 @@ function DesktopTable({
 }) {
   return (
     <div className="hidden overflow-x-auto rounded-2xl border border-border bg-surface lg:block">
-      <table className="w-full min-w-[960px] border-collapse text-left">
+      <table className="w-full min-w-[880px] border-collapse text-left">
         <thead className="bg-surface-2 text-base text-muted">
           <tr>
-            <th className="px-4 py-4 font-semibold">Customer name</th>
-            <th className="px-4 py-4 font-semibold">Job number</th>
+            <th className="sticky left-0 z-20 min-w-56 border-r border-border bg-surface-2 px-4 py-4 font-semibold shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
+              Customer / job
+            </th>
             <th className="px-4 py-4 font-semibold">Status</th>
             <th className="px-4 py-4 font-semibold">Next action</th>
             <th className="px-4 py-4 font-semibold">Time expectation</th>
@@ -178,8 +201,9 @@ function DesktopTable({
         <tbody>
           {jobs.map((job) => (
             <tr key={job.id} className="border-t border-border">
-              <td className="px-4 py-5 text-xl font-semibold">{job.customerName}</td>
-              <td className="px-4 py-5 font-mono text-lg">#{job.jobNumber}</td>
+              <td className="sticky left-0 z-10 border-r border-border bg-surface px-4 py-5 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
+                <IdentityBlock job={job} />
+              </td>
               <td className="px-4 py-5">
                 <StatusBadge status={job.status} />
               </td>
@@ -209,29 +233,37 @@ function MobileCards({
     <ul className="grid gap-4 lg:hidden">
       {jobs.map((job) => (
         <li key={job.id} className="rounded-2xl border border-border bg-surface p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-bold leading-tight">{job.customerName}</h2>
-              <p className="mt-1 font-mono text-lg text-muted">Job #{job.jobNumber}</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="sm:w-52 sm:shrink-0 sm:border-r sm:border-border sm:pr-4">
+              <IdentityBlock job={job} compact />
             </div>
-            <StatusBadge status={job.status} />
-          </div>
-          <dl className="mt-4 grid gap-3 text-lg">
-            <div>
-              <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                Next action
-              </dt>
-              <dd className="mt-1">{job.nextAction || "—"}</dd>
+            <div className="min-w-0 flex-1">
+              <dl className="grid gap-3 text-lg">
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Status
+                  </dt>
+                  <dd className="mt-1">
+                    <StatusBadge status={job.status} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Next action
+                  </dt>
+                  <dd className="mt-1">{job.nextAction || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Time expectation
+                  </dt>
+                  <dd className="mt-1">{job.timeExpectation || "—"}</dd>
+                </div>
+              </dl>
+              <div className="mt-4">
+                <RowActions onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
+              </div>
             </div>
-            <div>
-              <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                Time expectation
-              </dt>
-              <dd className="mt-1">{job.timeExpectation || "—"}</dd>
-            </div>
-          </dl>
-          <div className="mt-4">
-            <RowActions onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
           </div>
         </li>
       ))}
@@ -285,12 +317,10 @@ function JobEditor({
 }) {
   const [draft, setDraft] = useState(initial);
   const [customStatus, setCustomStatus] = useState(
-    SUGGESTED_STATUSES.includes(initial.status as (typeof SUGGESTED_STATUSES)[number])
-      ? ""
-      : initial.status,
+    isPipelineStatus(initial.status) ? "" : initial.status,
   );
   const [error, setError] = useState("");
-  const usingCustom = customStatus.length > 0 || !SUGGESTED_STATUSES.includes(draft.status as (typeof SUGGESTED_STATUSES)[number]);
+  const usingCustom = !isPipelineStatus(draft.status);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -298,9 +328,13 @@ function JobEditor({
       setError("Customer name and job number are required.");
       return;
     }
+    if (usingCustom && !customStatus.trim()) {
+      setError("Pick a Housecall Pro status, or type a custom one.");
+      return;
+    }
     onSave({
       ...draft,
-      status: usingCustom && customStatus.trim() ? customStatus.trim() : draft.status,
+      status: usingCustom ? customStatus.trim() : draft.status,
     });
   };
 
@@ -312,7 +346,7 @@ function JobEditor({
       >
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-base text-muted">
-          Housecall Pro job number, status, next step, and when it is due.
+          Housecall Pro job number, pipeline status, next step, and when it is due.
         </p>
 
         <div className="mt-5 grid gap-4">
@@ -339,44 +373,46 @@ function JobEditor({
               placeholder="1842"
             />
           </Field>
-          <fieldset>
-            <legend className="mb-2 text-base font-semibold">Status</legend>
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTED_STATUSES.map((status) => {
-                const selected = !usingCustom && draft.status === status;
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => {
-                      setCustomStatus("");
-                      setDraft((current) => ({ ...current, status }));
-                    }}
-                    className={`min-h-12 rounded-xl px-4 text-base font-semibold ${
-                      selected
-                        ? STATUS_CHIP[statusTone(status)]
-                        : "border border-border bg-background text-foreground"
-                    }`}
-                  >
-                    {status}
-                  </button>
-                );
-              })}
-            </div>
-            <label className="mt-3 block text-sm font-semibold text-muted" htmlFor="customStatus">
-              Or type a custom status
-            </label>
-            <input
-              id="customStatus"
-              value={customStatus}
+          <Field label="Status (Housecall Pro pipeline)" htmlFor="status">
+            <select
+              id="status"
+              value={usingCustom ? CUSTOM_STATUS_VALUE : draft.status}
               onChange={(event) => {
-                setCustomStatus(event.target.value);
-                setDraft((current) => ({ ...current, status: event.target.value }));
+                const next = event.target.value;
+                if (next === CUSTOM_STATUS_VALUE) {
+                  setDraft((current) => ({
+                    ...current,
+                    status: customStatus.trim() || CUSTOM_STATUS_VALUE,
+                  }));
+                  return;
+                }
+                setCustomStatus("");
+                setDraft((current) => ({ ...current, status: next }));
               }}
-              className="mt-1 min-h-12 w-full rounded-xl border border-border bg-background px-4 text-base"
-              placeholder="Free text is OK"
-            />
-          </fieldset>
+              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
+            >
+              {PIPELINE_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+              <option value={CUSTOM_STATUS_VALUE}>Other (type below)</option>
+            </select>
+          </Field>
+          {usingCustom ? (
+            <Field label="Custom status" htmlFor="customStatus">
+              <input
+                id="customStatus"
+                value={customStatus}
+                onChange={(event) => {
+                  setCustomStatus(event.target.value);
+                  setDraft((current) => ({ ...current, status: event.target.value }));
+                }}
+                className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
+                placeholder="Only if it is not on the Housecall Pro board"
+              />
+            </Field>
+          ) : null}
           <Field label="Next action" htmlFor="nextAction">
             <input
               id="nextAction"

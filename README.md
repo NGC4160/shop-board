@@ -2,21 +2,40 @@
 
 Shop floor / job board for **Neighborhood Golf Carts** in Covington, LA. Track carts as they move through the shop.
 
-This is **not CartScope**. CartScope (`cart-scope.vercel.app`) is diagnostics. This app is a separate shop board and must stay on its **own Vercel project and URL**.
+This is **not CartScope**. CartScope (`cart-scope.vercel.app`) is diagnostics. This app is a separate shop board on **https://ngc-shop-board.vercel.app**.
 
-## What it tracks
+Merging to `main` updates that live URL. Do not attach this repo to the CartScope Vercel project.
 
-Each cart/job row has five fields:
+## Layout
 
-1. **Customer name**
-2. **Job number** (Housecall Pro)
-3. **Status**
-4. **Next action**
-5. **Time expectation** (ETA / due / promised time)
+Each row is split like this:
 
-Suggested statuses (editable, or type your own): Waiting for drop-off, In bay, Waiting on parts, Waiting on deposit, Ready for pickup, Done.
+- **Left (sticky identity column):** customer name + Housecall Pro job number together
+- **Right:** Status, Next action, Time expectation, Actions
 
-v1 stores data in the browser (`localStorage`). The first load seeds a few example carts so the board is not empty. No login.
+On tablet/phone, customer + job stay the header / left block; the other fields sit below or to the right.
+
+## Statuses (Housecall Pro jobs pipeline)
+
+Status is a dropdown of the NGC Housecall Pro pipeline stages, in board order:
+
+1. New Job
+2. Customer drop off
+3. RYAN
+4. Deposit Needed
+5. Need to Order Materials
+6. Waiting on Materials
+7. Scheduled
+8. Awaiting Queue
+9. Shop Queue
+10. Awaiting Estimate
+11. In Progress
+12. Awaiting Payment
+13. Completed
+
+Free-text status is a fallback only (Other). Seed rows use these pipeline labels.
+
+v1 stores data in the browser (`localStorage`). The first load seeds example carts so the board is not empty. No login.
 
 ## Local run
 
@@ -34,26 +53,20 @@ npm run build
 npm start
 ```
 
-## Deploy on Vercel (separate project from CartScope)
+## Deploy
 
-Create a **new** Vercel project. Do not import this repo into the CartScope project.
+Live site: **https://ngc-shop-board.vercel.app** (Vercel project `ngc-shop-board`).
 
-Suggested project name: **`ngc-shop-board`** (URL will look like `ngc-shop-board.vercel.app`, not `cart-scope.vercel.app`).
+Merging this repo’s `main` branch updates that deployment. Keep it a **separate** project from CartScope.
 
-1. In Vercel: **Add New… → Project**.
-2. Import the `NGC4160/shop-board` GitHub repo (this repo).
-3. Framework: **Next.js** (auto-detected). Root directory: repo root.
-4. Project name: `ngc-shop-board` (or `shop-board`). Confirm it is **not** `cart-scope`.
-5. Deploy.
-
-Or from the CLI in this directory:
+If you ever re-link the CLI:
 
 ```bash
 npx vercel link --yes --project ngc-shop-board
 npx vercel --prod
 ```
 
-If you already have CartScope linked, run `vercel link` again here and choose / create **`ngc-shop-board`**. A `.vercel` folder in this repo should never point at CartScope.
+A `.vercel` folder in this repo should never point at CartScope.
 
 ## Stack
 
