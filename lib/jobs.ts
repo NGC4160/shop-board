@@ -1,4 +1,4 @@
-export const STORAGE_KEY = "ngc-shop-board-v3";
+export const STORAGE_KEY = "ngc-shop-board-v4";
 
 /** Live NGC Housecall Pro Jobs pipeline (Pipeline → Jobs), left to right. */
 export const PIPELINE_STATUSES = [
@@ -32,10 +32,21 @@ export const PIPELINE_STATUSES = [
 
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
+/** Provisional NGC field techs from Housecall Pro (2026-09-02), until Shop confirms live list. */
+export const PRIMARY_TECHS = [
+  "Hayden Silva",
+  "Jesse Killian",
+  "Marlon Gray",
+  "Ryan Gorgoglione",
+] as const;
+
+export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
+
 export type CartJob = {
   id: string;
   customerName: string;
   jobNumber: string;
+  primaryTech: string;
   status: string;
   nextAction: string;
   timeExpectation: string;
@@ -46,6 +57,7 @@ export type CartJob = {
 export type CartJobDraft = {
   customerName: string;
   jobNumber: string;
+  primaryTech: string;
   status: string;
   nextAction: string;
   timeExpectation: string;
@@ -54,6 +66,7 @@ export type CartJobDraft = {
 export const emptyDraft: CartJobDraft = {
   customerName: "",
   jobNumber: "",
+  primaryTech: "",
   status: "New Job",
   nextAction: "",
   timeExpectation: "",
@@ -64,6 +77,7 @@ export const seedJobs: CartJob[] = [
     id: "seed-1842",
     customerName: "Mike Landry",
     jobNumber: "1842",
+    primaryTech: "Hayden Silva",
     status: "In Progress",
     nextAction: "Replace solenoid and test drive",
     timeExpectation: "Due today 4:00 PM",
@@ -74,6 +88,7 @@ export const seedJobs: CartJob[] = [
     id: "seed-1847",
     customerName: "Sharon Badeaux",
     jobNumber: "1847",
+    primaryTech: "Marlon Gray",
     status: "Waiting on Materials",
     nextAction: "Call when controller comes in",
     timeExpectation: "Parts ETA Wednesday",
@@ -84,6 +99,7 @@ export const seedJobs: CartJob[] = [
     id: "seed-1851",
     customerName: "Trey Fontenot",
     jobNumber: "1851",
+    primaryTech: "",
     status: "Customer drop off",
     nextAction: "Confirm drop-off time",
     timeExpectation: "Promised Friday morning",
@@ -94,6 +110,7 @@ export const seedJobs: CartJob[] = [
     id: "seed-1839",
     customerName: "The Landing HOA",
     jobNumber: "1839",
+    primaryTech: "Jesse Killian",
     status: "Awaiting Payment",
     nextAction: "Call customer — cart is ready",
     timeExpectation: "Ready now",
@@ -104,6 +121,7 @@ export const seedJobs: CartJob[] = [
     id: "seed-1855",
     customerName: 'James "Coach" Williams',
     jobNumber: "1855",
+    primaryTech: "Ryan Gorgoglione",
     status: "Deposit Needed",
     nextAction: "Text Housecall Pro invoice",
     timeExpectation: "Hold until paid",
@@ -123,6 +141,10 @@ export function isPipelineStatus(status: string): status is PipelineStatus {
   return (PIPELINE_STATUSES as readonly string[]).includes(status);
 }
 
+export function isPrimaryTech(name: string): name is PrimaryTech {
+  return (PRIMARY_TECHS as readonly string[]).includes(name);
+}
+
 export function isClosedStatus(status: string): boolean {
   return status === "Invoice Paid";
 }
@@ -133,6 +155,7 @@ export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
     id: existing?.id ?? createId(),
     customerName: draft.customerName.trim(),
     jobNumber: draft.jobNumber.trim(),
+    primaryTech: draft.primaryTech.trim(),
     status: draft.status.trim() || "New Job",
     nextAction: draft.nextAction.trim(),
     timeExpectation: draft.timeExpectation.trim(),
@@ -145,6 +168,7 @@ export function jobToDraft(job: CartJob): CartJobDraft {
   return {
     customerName: job.customerName,
     jobNumber: job.jobNumber,
+    primaryTech: job.primaryTech,
     status: job.status,
     nextAction: job.nextAction,
     timeExpectation: job.timeExpectation,
@@ -300,6 +324,7 @@ function isCartJob(value: unknown): value is CartJob {
     typeof job.id === "string" &&
     typeof job.customerName === "string" &&
     typeof job.jobNumber === "string" &&
+    typeof job.primaryTech === "string" &&
     typeof job.status === "string" &&
     typeof job.nextAction === "string" &&
     typeof job.timeExpectation === "string"

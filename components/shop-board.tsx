@@ -3,12 +3,14 @@
 import { useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import {
   PIPELINE_STATUSES,
+  PRIMARY_TECHS,
   draftToJob,
   emptyDraft,
   getJobsSnapshot,
   getServerJobsSnapshot,
   isClosedStatus,
   isPipelineStatus,
+  isPrimaryTech,
   jobToDraft,
   saveJobs,
   sortJobs,
@@ -189,12 +191,13 @@ function DesktopTable({
 }) {
   return (
     <div className="hidden overflow-x-auto rounded-2xl border border-border bg-surface lg:block">
-      <table className="w-full min-w-[880px] border-collapse text-left">
+      <table className="w-full min-w-[1080px] border-collapse text-left">
         <thead className="bg-surface-2 text-base text-muted">
           <tr>
             <th className="sticky left-0 z-20 min-w-56 border-r border-border bg-surface-2 px-4 py-4 font-semibold shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
               Customer / job
             </th>
+            <th className="px-4 py-4 font-semibold">Primary tech</th>
             <th className="px-4 py-4 font-semibold">Status</th>
             <th className="px-4 py-4 font-semibold">Next action</th>
             <th className="px-4 py-4 font-semibold">Time expectation</th>
@@ -208,6 +211,9 @@ function DesktopTable({
             <tr key={job.id} className="border-t border-border">
               <td className="sticky left-0 z-10 border-r border-border bg-surface px-4 py-5 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
                 <IdentityBlock job={job} />
+              </td>
+              <td className="px-4 py-5 text-lg">
+                <PrimaryTechLabel name={job.primaryTech} />
               </td>
               <td className="px-4 py-5">
                 <StatusBadge status={job.status} />
@@ -246,6 +252,14 @@ function MobileCards({
               <dl className="grid gap-3 text-lg">
                 <div>
                   <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Primary tech
+                  </dt>
+                  <dd className="mt-1">
+                    <PrimaryTechLabel name={job.primaryTech} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
                     Status
                   </dt>
                   <dd className="mt-1">
@@ -274,6 +288,13 @@ function MobileCards({
       ))}
     </ul>
   );
+}
+
+function PrimaryTechLabel({ name }: { name: string }) {
+  if (!name) {
+    return <span className="text-muted">Unassigned</span>;
+  }
+  return <span>{name}</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -322,6 +343,7 @@ function JobEditor({
 }) {
   const [draft, setDraft] = useState<CartJobDraft>({
     ...initial,
+    primaryTech: isPrimaryTech(initial.primaryTech) ? initial.primaryTech : "",
     status: isPipelineStatus(initial.status) ? initial.status : "New Job",
   });
   const [error, setError] = useState("");
@@ -346,7 +368,7 @@ function JobEditor({
       >
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-base text-muted">
-          Housecall Pro job number, pipeline status, next step, and when it is due.
+          Housecall Pro job number, primary tech, pipeline status, next step, and when it is due.
         </p>
 
         <div className="mt-5 grid gap-4">
@@ -372,6 +394,23 @@ function JobEditor({
               className="min-h-14 w-full rounded-xl border border-border bg-background px-4 font-mono text-lg"
               placeholder="1842"
             />
+          </Field>
+          <Field label="Primary tech" htmlFor="primaryTech">
+            <select
+              id="primaryTech"
+              value={draft.primaryTech}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, primaryTech: event.target.value }))
+              }
+              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
+            >
+              <option value="">Unassigned</option>
+              {PRIMARY_TECHS.map((tech) => (
+                <option key={tech} value={tech}>
+                  {tech}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Status (Housecall Pro pipeline)" htmlFor="status">
             <StatusPicker

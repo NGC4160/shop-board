@@ -11,9 +11,20 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 Each row is split like this:
 
 - **Left (sticky identity column):** customer name + Housecall Pro job number together
-- **Right:** Status, Next action, Time expectation, Actions
+- **Right:** Primary tech, Status, Next action, Time expectation, Actions
 
 On tablet/phone, customer + job stay the header / left block; the other fields sit below or to the right.
+
+## Primary tech
+
+Dropdown of current NGC field techs from Housecall Pro. Provisional names from the last known HCP team (2026-09-02), until Shop confirms the live list:
+
+- Hayden Silva
+- Jesse Killian
+- Marlon Gray
+- Ryan Gorgoglione
+
+Unassigned is allowed. Seed rows use these names (one cart is unassigned).
 
 ## Statuses (Housecall Pro jobs pipeline)
 
