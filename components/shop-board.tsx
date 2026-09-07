@@ -2,32 +2,62 @@
 
 import { useMemo, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import {
-  SUGGESTED_STATUSES,
+  PIPELINE_STATUSES,
+  PRIMARY_TECHS,
   draftToJob,
   emptyDraft,
   getJobsSnapshot,
   getServerJobsSnapshot,
+  isClosedStatus,
+  isPipelineStatus,
+  isPrimaryTech,
   jobToDraft,
   saveJobs,
-  sortJobs,
   statusTone,
   subscribeJobs,
   type CartJob,
   type CartJobDraft,
+  type StatusTone,
 } from "@/lib/jobs";
+import {
+  getServerSortSnapshot,
+  getSortSnapshot,
+  saveSort,
+  setStatusSortMode,
+  sortJobsBy,
+  subscribeSort,
+  toggleSort,
+  type SortColumn,
+  type SortState,
+  type StatusSortMode,
+} from "@/lib/sort";
 
-const STATUS_CHIP: Record<ReturnType<typeof statusTone>, string> = {
-  bay: "bg-bay text-accent-ink",
-  parts: "bg-parts text-accent-ink",
+const STATUS_CHIP: Record<StatusTone, string> = {
+  new: "bg-wait text-accent-ink",
+  dropoff: "bg-wait text-accent-ink",
+  pictures: "bg-estimate text-accent-ink",
+  ryan: "bg-bay text-accent-ink",
   deposit: "bg-deposit text-accent-ink",
-  ready: "bg-ready text-accent-ink",
+  order: "bg-parts text-accent-ink",
+  materials: "bg-parts text-accent-ink",
+  scheduled: "bg-wait text-accent-ink",
+  callback: "bg-deposit text-accent-ink",
+  queue: "bg-queue text-accent-ink",
+  estimate: "bg-estimate text-accent-ink",
+  progress: "bg-bay text-accent-ink",
+  approval: "bg-estimate text-accent-ink",
+  qc: "bg-queue text-accent-ink",
+  payment: "bg-deposit text-accent-ink",
+  pickup: "bg-ready text-accent-ink",
+  invoice: "bg-wait text-accent-ink",
+  hold: "bg-surface-2 text-muted border border-border",
   done: "bg-surface-2 text-muted border border-border",
-  wait: "bg-wait text-accent-ink",
   custom: "bg-surface-2 text-foreground border border-border",
 };
 
 export function ShopBoard() {
   const jobs = useSyncExternalStore(subscribeJobs, getJobsSnapshot, getServerJobsSnapshot);
+  const sort = useSyncExternalStore(subscribeSort, getSortSnapshot, getServerSortSnapshot);
   const [editor, setEditor] = useState<
     | { mode: "create" }
     | { mode: "edit"; job: CartJob }
@@ -36,11 +66,17 @@ export function ShopBoard() {
   >(null);
 
   const persist = (next: CartJob[]) => {
-    saveJobs(sortJobs(next));
+    saveJobs(next);
   };
 
-  const visibleJobs = useMemo(() => sortJobs(jobs), [jobs]);
-  const openCount = visibleJobs.filter((job) => job.status.toLowerCase() !== "done").length;
+  const visibleJobs = useMemo(() => sortJobsBy(jobs, sort), [jobs, sort]);
+  const changeSort = (column: SortColumn) => {
+    saveSort(toggleSort(sort, column));
+  };
+  const changeStatusMode = (mode: StatusSortMode) => {
+    saveSort(setStatusSortMode(sort, mode));
+  };
+  const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
   const saveDraft = (draft: CartJobDraft, existing?: CartJob) => {
     const nextJob = draftToJob(draft, existing);
@@ -90,8 +126,17 @@ export function ShopBoard() {
           <EmptyState onAdd={() => setEditor({ mode: "create" })} />
         ) : (
           <>
+            <SortBar
+              sort={sort}
+              onSort={changeSort}
+              onStatusMode={changeStatusMode}
+              className="mb-4 lg:hidden"
+            />
             <DesktopTable
               jobs={visibleJobs}
+              sort={sort}
+              onSort={changeSort}
+              onStatusMode={changeStatusMode}
               onEdit={(job) => setEditor({ mode: "edit", job })}
               onDelete={(job) => setEditor({ mode: "delete", job })}
             />
@@ -151,26 +196,224 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   );
 }
 
+function IdentityBlock({ job, compact = false }: { job: CartJob; compact?: boolean }) {
+  return (
+    <div>
+      <p className={compact ? "text-xl font-bold leading-tight" : "text-xl font-semibold leading-tight"}>
+        {job.customerName}
+      </p>
+      <p className="mt-1 font-mono text-base text-muted">#{job.jobNumber}</p>
+    </div>
+  );
+}
+
+const SORT_LABELS: { column: SortColumn; label: string }[] = [
+  { column: "customerName", label: "Customer name" },
+  { column: "jobNumber", label: "Job number" },
+  { column: "primaryTech", label: "Primary tech" },
+  { column: "status", label: "Status" },
+  { column: "nextAction", label: "Next action" },
+  { column: "timeExpectation", label: "Time expectation" },
+];
+
+function sortMarker(sort: SortState, column: SortColumn): string {
+  if (sort.column !== column) return "⇅";
+  if (column === "status") {
+    const mode = sort.statusMode === "alpha" ? "A–Z" : "Pipeline";
+    return `${mode} ${sort.direction === "asc" ? "▲" : "▼"}`;
+  }
+  if (column === "jobNumber") {
+    return sort.direction === "asc" ? "1–9 ▲" : "9–1 ▼";
+  }
+  return sort.direction === "asc" ? "A–Z ▲" : "Z–A ▼";
+}
+
+function SortHeader({
+  column,
+  label,
+  sort,
+  onSort,
+}: {
+  column: SortColumn;
+  label: string;
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+}) {
+  const active = sort.column === column;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      aria-pressed={active}
+      className={`inline-flex min-h-12 items-center gap-2 rounded-lg px-1 text-left font-semibold hover:text-foreground ${
+        active ? "text-accent" : "text-muted"
+      }`}
+    >
+      <span>{label}</span>
+      <span aria-hidden className={active ? "text-accent" : "text-muted/70"}>
+        {sortMarker(sort, column)}
+      </span>
+    </button>
+  );
+}
+
+function StatusModeToggle({
+  sort,
+  onStatusMode,
+}: {
+  sort: SortState;
+  onStatusMode: (mode: StatusSortMode) => void;
+}) {
+  const active = sort.column === "status";
+  return (
+    <div className="flex flex-wrap gap-1">
+      <button
+        type="button"
+        onClick={() => onStatusMode("pipeline")}
+        className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${
+          active && sort.statusMode === "pipeline"
+            ? "bg-accent text-accent-ink"
+            : "border border-border text-muted"
+        }`}
+      >
+        Pipeline
+      </button>
+      <button
+        type="button"
+        onClick={() => onStatusMode("alpha")}
+        className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${
+          active && sort.statusMode === "alpha"
+            ? "bg-accent text-accent-ink"
+            : "border border-border text-muted"
+        }`}
+      >
+        A–Z
+      </button>
+    </div>
+  );
+}
+
+function SortBar({
+  sort,
+  onSort,
+  onStatusMode,
+  className = "",
+}: {
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+  onStatusMode: (mode: StatusSortMode) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Sort by</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {SORT_LABELS.map(({ column, label }) => (
+          <SortHeader key={column} column={column} label={label} sort={sort} onSort={onSort} />
+        ))}
+        <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
+      </div>
+    </div>
+  );
+}
+
 function DesktopTable({
   jobs,
+  sort,
+  onSort,
+  onStatusMode,
   onEdit,
   onDelete,
 }: {
   jobs: CartJob[];
+  sort: SortState;
+  onSort: (column: SortColumn) => void;
+  onStatusMode: (mode: StatusSortMode) => void;
   onEdit: (job: CartJob) => void;
   onDelete: (job: CartJob) => void;
 }) {
   return (
     <div className="hidden overflow-x-auto rounded-2xl border border-border bg-surface lg:block">
-      <table className="w-full min-w-[960px] border-collapse text-left">
-        <thead className="bg-surface-2 text-base text-muted">
+      <table className="w-full min-w-[1080px] border-collapse text-left">
+        <thead className="bg-surface-2 text-base">
           <tr>
-            <th className="px-4 py-4 font-semibold">Customer name</th>
-            <th className="px-4 py-4 font-semibold">Job number</th>
-            <th className="px-4 py-4 font-semibold">Status</th>
-            <th className="px-4 py-4 font-semibold">Next action</th>
-            <th className="px-4 py-4 font-semibold">Time expectation</th>
-            <th className="px-4 py-4 font-semibold">
+            <th
+              aria-sort={
+                sort.column === "customerName" || sort.column === "jobNumber"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="sticky left-0 z-20 min-w-56 border-r border-border bg-surface-2 px-4 py-3 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]"
+            >
+              <div className="flex flex-col items-start gap-1">
+                <SortHeader
+                  column="customerName"
+                  label="Customer name"
+                  sort={sort}
+                  onSort={onSort}
+                />
+                <SortHeader column="jobNumber" label="Job number" sort={sort} onSort={onSort} />
+              </div>
+            </th>
+            <th
+              aria-sort={
+                sort.column === "primaryTech"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <SortHeader column="primaryTech" label="Primary tech" sort={sort} onSort={onSort} />
+            </th>
+            <th
+              aria-sort={
+                sort.column === "status"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <div className="flex flex-col items-start gap-1">
+                <SortHeader column="status" label="Status" sort={sort} onSort={onSort} />
+                <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
+              </div>
+            </th>
+            <th
+              aria-sort={
+                sort.column === "nextAction"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <SortHeader column="nextAction" label="Next action" sort={sort} onSort={onSort} />
+            </th>
+            <th
+              aria-sort={
+                sort.column === "timeExpectation"
+                  ? sort.direction === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              className="px-4 py-3"
+            >
+              <SortHeader
+                column="timeExpectation"
+                label="Time expectation"
+                sort={sort}
+                onSort={onSort}
+              />
+            </th>
+            <th className="px-4 py-3">
               <span className="sr-only">Actions</span>
             </th>
           </tr>
@@ -178,8 +421,12 @@ function DesktopTable({
         <tbody>
           {jobs.map((job) => (
             <tr key={job.id} className="border-t border-border">
-              <td className="px-4 py-5 text-xl font-semibold">{job.customerName}</td>
-              <td className="px-4 py-5 font-mono text-lg">#{job.jobNumber}</td>
+              <td className="sticky left-0 z-10 border-r border-border bg-surface px-4 py-5 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
+                <IdentityBlock job={job} />
+              </td>
+              <td className="px-4 py-5 text-lg">
+                <PrimaryTechLabel name={job.primaryTech} />
+              </td>
               <td className="px-4 py-5">
                 <StatusBadge status={job.status} />
               </td>
@@ -209,34 +456,57 @@ function MobileCards({
     <ul className="grid gap-4 lg:hidden">
       {jobs.map((job) => (
         <li key={job.id} className="rounded-2xl border border-border bg-surface p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-bold leading-tight">{job.customerName}</h2>
-              <p className="mt-1 font-mono text-lg text-muted">Job #{job.jobNumber}</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="sm:w-52 sm:shrink-0 sm:border-r sm:border-border sm:pr-4">
+              <IdentityBlock job={job} compact />
             </div>
-            <StatusBadge status={job.status} />
-          </div>
-          <dl className="mt-4 grid gap-3 text-lg">
-            <div>
-              <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                Next action
-              </dt>
-              <dd className="mt-1">{job.nextAction || "—"}</dd>
+            <div className="min-w-0 flex-1">
+              <dl className="grid gap-3 text-lg">
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Primary tech
+                  </dt>
+                  <dd className="mt-1">
+                    <PrimaryTechLabel name={job.primaryTech} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Status
+                  </dt>
+                  <dd className="mt-1">
+                    <StatusBadge status={job.status} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Next action
+                  </dt>
+                  <dd className="mt-1">{job.nextAction || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
+                    Time expectation
+                  </dt>
+                  <dd className="mt-1">{job.timeExpectation || "—"}</dd>
+                </div>
+              </dl>
+              <div className="mt-4">
+                <RowActions onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
+              </div>
             </div>
-            <div>
-              <dt className="text-sm font-semibold uppercase tracking-wide text-muted">
-                Time expectation
-              </dt>
-              <dd className="mt-1">{job.timeExpectation || "—"}</dd>
-            </div>
-          </dl>
-          <div className="mt-4">
-            <RowActions onEdit={() => onEdit(job)} onDelete={() => onDelete(job)} />
           </div>
         </li>
       ))}
     </ul>
   );
+}
+
+function PrimaryTechLabel({ name }: { name: string }) {
+  if (!name) {
+    return <span className="text-muted">Unassigned</span>;
+  }
+  return <span>{name}</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -283,14 +553,12 @@ function JobEditor({
   onSave: (draft: CartJobDraft) => void;
   onDelete?: () => void;
 }) {
-  const [draft, setDraft] = useState(initial);
-  const [customStatus, setCustomStatus] = useState(
-    SUGGESTED_STATUSES.includes(initial.status as (typeof SUGGESTED_STATUSES)[number])
-      ? ""
-      : initial.status,
-  );
+  const [draft, setDraft] = useState<CartJobDraft>({
+    ...initial,
+    primaryTech: isPrimaryTech(initial.primaryTech) ? initial.primaryTech : "",
+    status: isPipelineStatus(initial.status) ? initial.status : "New Job",
+  });
   const [error, setError] = useState("");
-  const usingCustom = customStatus.length > 0 || !SUGGESTED_STATUSES.includes(draft.status as (typeof SUGGESTED_STATUSES)[number]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -300,19 +568,19 @@ function JobEditor({
     }
     onSave({
       ...draft,
-      status: usingCustom && customStatus.trim() ? customStatus.trim() : draft.status,
+      status: isPipelineStatus(draft.status) ? draft.status : "New Job",
     });
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 p-3 sm:items-center">
+    <div className="fixed inset-0 z-40 flex items-end justify-center overflow-y-auto bg-black/70 p-3 sm:items-center">
       <form
         onSubmit={submit}
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-2xl"
+        className="my-auto w-full max-w-2xl overflow-visible rounded-2xl border border-border bg-surface p-5 shadow-2xl"
       >
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-base text-muted">
-          Housecall Pro job number, status, next step, and when it is due.
+          Housecall Pro job number, primary tech, pipeline status, next step, and when it is due.
         </p>
 
         <div className="mt-5 grid gap-4">
@@ -339,44 +607,30 @@ function JobEditor({
               placeholder="1842"
             />
           </Field>
-          <fieldset>
-            <legend className="mb-2 text-base font-semibold">Status</legend>
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTED_STATUSES.map((status) => {
-                const selected = !usingCustom && draft.status === status;
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => {
-                      setCustomStatus("");
-                      setDraft((current) => ({ ...current, status }));
-                    }}
-                    className={`min-h-12 rounded-xl px-4 text-base font-semibold ${
-                      selected
-                        ? STATUS_CHIP[statusTone(status)]
-                        : "border border-border bg-background text-foreground"
-                    }`}
-                  >
-                    {status}
-                  </button>
-                );
-              })}
-            </div>
-            <label className="mt-3 block text-sm font-semibold text-muted" htmlFor="customStatus">
-              Or type a custom status
-            </label>
-            <input
-              id="customStatus"
-              value={customStatus}
-              onChange={(event) => {
-                setCustomStatus(event.target.value);
-                setDraft((current) => ({ ...current, status: event.target.value }));
-              }}
-              className="mt-1 min-h-12 w-full rounded-xl border border-border bg-background px-4 text-base"
-              placeholder="Free text is OK"
+          <Field label="Primary tech" htmlFor="primaryTech">
+            <select
+              id="primaryTech"
+              value={draft.primaryTech}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, primaryTech: event.target.value }))
+              }
+              className="min-h-14 w-full rounded-xl border border-border bg-background px-4 text-lg"
+            >
+              <option value="">Unassigned</option>
+              {PRIMARY_TECHS.map((tech) => (
+                <option key={tech} value={tech}>
+                  {tech}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Status (Housecall Pro pipeline)" htmlFor="status">
+            <StatusPicker
+              id="status"
+              value={draft.status}
+              onChange={(status) => setDraft((current) => ({ ...current, status }))}
             />
-          </fieldset>
+          </Field>
           <Field label="Next action" htmlFor="nextAction">
             <input
               id="nextAction"
@@ -472,6 +726,65 @@ function ConfirmDelete({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusPicker({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (status: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        id={id}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex min-h-14 w-full items-center justify-between rounded-xl border border-border bg-background px-4 text-left text-lg"
+      >
+        <span>{value}</span>
+        <span className="ml-3 text-muted" aria-hidden>
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open ? (
+        <ul
+          role="listbox"
+          aria-labelledby={id}
+          className="absolute left-0 right-0 z-50 mt-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-background py-1 shadow-2xl"
+        >
+          {PIPELINE_STATUSES.map((status) => {
+            const selected = status === value;
+            return (
+              <li key={status}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(status);
+                    setOpen(false);
+                  }}
+                  className={`flex min-h-12 w-full items-center px-4 text-left text-base ${
+                    selected ? "bg-accent text-accent-ink font-semibold" : "hover:bg-surface-2"
+                  }`}
+                >
+                  {status}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }

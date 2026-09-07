@@ -1,20 +1,51 @@
-export const STORAGE_KEY = "ngc-shop-board-v1";
+export const STORAGE_KEY = "ngc-shop-board-v5";
 
-export const SUGGESTED_STATUSES = [
-  "Waiting for drop-off",
-  "In bay",
-  "Waiting on parts",
-  "Waiting on deposit",
-  "Ready for pickup",
-  "Done",
+/** Live NGC Housecall Pro Jobs pipeline (Pipeline → Jobs), left to right. */
+export const PIPELINE_STATUSES = [
+  "New Job",
+  "Customer drop off",
+  "Pictures Needed",
+  "Deposit Needed",
+  "RYAN",
+  "Need to Order Materials",
+  "Waiting on Materials",
+  "Unscheduled",
+  "Scheduled",
+  "Return Call Needed",
+  "In Progress",
+  "Awaiting Queue",
+  "Shop Queue",
+  "JESSE- estimate ready to call",
+  "Awaiting Estimate",
+  "Awaiting Approval",
+  "Awaiting Deposit",
+  "Awaiting QC",
+  "Completed",
+  "Awaiting Payment",
+  "Awaiting Return Delivery",
+  "Customer pick up",
+  "Need to Invoice",
+  "Invoice Sent",
+  "On Hold",
+  "Invoice Paid",
 ] as const;
 
-export type SuggestedStatus = (typeof SUGGESTED_STATUSES)[number];
+export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
+
+/** Live NGC Housecall Pro Field Techs (Settings → Team & Permissions). */
+export const PRIMARY_TECHS = [
+  "Marlon Gray",
+  "Ryan Gorgoglione",
+  "Hayden Silva",
+] as const;
+
+export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
 
 export type CartJob = {
   id: string;
   customerName: string;
   jobNumber: string;
+  primaryTech: string;
   status: string;
   nextAction: string;
   timeExpectation: string;
@@ -25,6 +56,7 @@ export type CartJob = {
 export type CartJobDraft = {
   customerName: string;
   jobNumber: string;
+  primaryTech: string;
   status: string;
   nextAction: string;
   timeExpectation: string;
@@ -33,7 +65,8 @@ export type CartJobDraft = {
 export const emptyDraft: CartJobDraft = {
   customerName: "",
   jobNumber: "",
-  status: "Waiting for drop-off",
+  primaryTech: "",
+  status: "New Job",
   nextAction: "",
   timeExpectation: "",
 };
@@ -43,7 +76,8 @@ export const seedJobs: CartJob[] = [
     id: "seed-1842",
     customerName: "Mike Landry",
     jobNumber: "1842",
-    status: "In bay",
+    primaryTech: "Hayden Silva",
+    status: "In Progress",
     nextAction: "Replace solenoid and test drive",
     timeExpectation: "Due today 4:00 PM",
     createdAt: 1,
@@ -53,7 +87,8 @@ export const seedJobs: CartJob[] = [
     id: "seed-1847",
     customerName: "Sharon Badeaux",
     jobNumber: "1847",
-    status: "Waiting on parts",
+    primaryTech: "Marlon Gray",
+    status: "Waiting on Materials",
     nextAction: "Call when controller comes in",
     timeExpectation: "Parts ETA Wednesday",
     createdAt: 2,
@@ -63,7 +98,8 @@ export const seedJobs: CartJob[] = [
     id: "seed-1851",
     customerName: "Trey Fontenot",
     jobNumber: "1851",
-    status: "Waiting for drop-off",
+    primaryTech: "",
+    status: "Customer drop off",
     nextAction: "Confirm drop-off time",
     timeExpectation: "Promised Friday morning",
     createdAt: 3,
@@ -73,7 +109,8 @@ export const seedJobs: CartJob[] = [
     id: "seed-1839",
     customerName: "The Landing HOA",
     jobNumber: "1839",
-    status: "Ready for pickup",
+    primaryTech: "Hayden Silva",
+    status: "Awaiting Payment",
     nextAction: "Call customer — cart is ready",
     timeExpectation: "Ready now",
     createdAt: 4,
@@ -83,7 +120,8 @@ export const seedJobs: CartJob[] = [
     id: "seed-1855",
     customerName: 'James "Coach" Williams',
     jobNumber: "1855",
-    status: "Waiting on deposit",
+    primaryTech: "Ryan Gorgoglione",
+    status: "Deposit Needed",
     nextAction: "Text Housecall Pro invoice",
     timeExpectation: "Hold until paid",
     createdAt: 5,
@@ -98,13 +136,26 @@ export function createId(): string {
   return `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function isPipelineStatus(status: string): status is PipelineStatus {
+  return (PIPELINE_STATUSES as readonly string[]).includes(status);
+}
+
+export function isPrimaryTech(name: string): name is PrimaryTech {
+  return (PRIMARY_TECHS as readonly string[]).includes(name);
+}
+
+export function isClosedStatus(status: string): boolean {
+  return status === "Invoice Paid";
+}
+
 export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
   const now = Date.now();
   return {
     id: existing?.id ?? createId(),
     customerName: draft.customerName.trim(),
     jobNumber: draft.jobNumber.trim(),
-    status: draft.status.trim() || "Waiting for drop-off",
+    primaryTech: draft.primaryTech.trim(),
+    status: draft.status.trim() || "New Job",
     nextAction: draft.nextAction.trim(),
     timeExpectation: draft.timeExpectation.trim(),
     createdAt: existing?.createdAt ?? now,
@@ -116,17 +167,23 @@ export function jobToDraft(job: CartJob): CartJobDraft {
   return {
     customerName: job.customerName,
     jobNumber: job.jobNumber,
+    primaryTech: job.primaryTech,
     status: job.status,
     nextAction: job.nextAction,
     timeExpectation: job.timeExpectation,
   };
 }
 
+export function statusRank(status: string): number {
+  const index = PIPELINE_STATUSES.indexOf(status as PipelineStatus);
+  if (index >= 0) return index;
+  return PIPELINE_STATUSES.length - 0.5;
+}
+
 export function sortJobs(jobs: CartJob[]): CartJob[] {
   return [...jobs].sort((a, b) => {
-    const aDone = a.status.toLowerCase() === "done" ? 1 : 0;
-    const bDone = b.status.toLowerCase() === "done" ? 1 : 0;
-    if (aDone !== bDone) return aDone - bDone;
+    const rankDelta = statusRank(a.status) - statusRank(b.status);
+    if (rankDelta !== 0) return rankDelta;
     return b.updatedAt - a.updatedAt;
   });
 }
@@ -184,20 +241,76 @@ export function saveJobs(jobs: CartJob[]): void {
   listeners.forEach((listener) => listener());
 }
 
-export function statusTone(status: string): "bay" | "parts" | "deposit" | "ready" | "done" | "wait" | "custom" {
+export type StatusTone =
+  | "new"
+  | "dropoff"
+  | "pictures"
+  | "ryan"
+  | "deposit"
+  | "order"
+  | "materials"
+  | "scheduled"
+  | "callback"
+  | "queue"
+  | "estimate"
+  | "progress"
+  | "approval"
+  | "qc"
+  | "payment"
+  | "pickup"
+  | "invoice"
+  | "hold"
+  | "done"
+  | "custom";
+
+export function statusTone(status: string): StatusTone {
   switch (status) {
-    case "In bay":
-      return "bay";
-    case "Waiting on parts":
-      return "parts";
-    case "Waiting on deposit":
+    case "New Job":
+      return "new";
+    case "Customer drop off":
+      return "dropoff";
+    case "Pictures Needed":
+      return "pictures";
+    case "Deposit Needed":
+    case "Awaiting Deposit":
       return "deposit";
-    case "Ready for pickup":
-      return "ready";
-    case "Done":
+    case "RYAN":
+      return "ryan";
+    case "Need to Order Materials":
+      return "order";
+    case "Waiting on Materials":
+      return "materials";
+    case "Unscheduled":
+    case "Scheduled":
+      return "scheduled";
+    case "Return Call Needed":
+      return "callback";
+    case "In Progress":
+      return "progress";
+    case "Awaiting Queue":
+    case "Shop Queue":
+      return "queue";
+    case "JESSE- estimate ready to call":
+    case "Awaiting Estimate":
+      return "estimate";
+    case "Awaiting Approval":
+      return "approval";
+    case "Awaiting QC":
+      return "qc";
+    case "Completed":
       return "done";
-    case "Waiting for drop-off":
-      return "wait";
+    case "Awaiting Payment":
+      return "payment";
+    case "Awaiting Return Delivery":
+    case "Customer pick up":
+      return "pickup";
+    case "Need to Invoice":
+    case "Invoice Sent":
+      return "invoice";
+    case "On Hold":
+      return "hold";
+    case "Invoice Paid":
+      return "done";
     default:
       return "custom";
   }
@@ -210,6 +323,7 @@ function isCartJob(value: unknown): value is CartJob {
     typeof job.id === "string" &&
     typeof job.customerName === "string" &&
     typeof job.jobNumber === "string" &&
+    typeof job.primaryTech === "string" &&
     typeof job.status === "string" &&
     typeof job.nextAction === "string" &&
     typeof job.timeExpectation === "string"
