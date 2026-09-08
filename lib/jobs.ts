@@ -149,6 +149,36 @@ export const seedJobs: CartJob[] = [
   },
 ];
 
+export function normalizeJobNumber(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+/** Digits, or HCP-style suffix like 17312-1. Empty is allowed for a new row. */
+const JOB_NUMBER_PATTERN = /^\d+(-\d+)?$/;
+
+export function isValidJobNumber(value: string): boolean {
+  const normalized = normalizeJobNumber(value);
+  if (!normalized) return true;
+  return JOB_NUMBER_PATTERN.test(normalized);
+}
+
+export function jobNumberError(value: string): string | null {
+  if (isValidJobNumber(value)) return null;
+  return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
+}
+
+export function hasDuplicateJobNumber(
+  jobs: CartJob[],
+  id: string,
+  jobNumber: string,
+): boolean {
+  const normalized = normalizeJobNumber(jobNumber);
+  if (!normalized) return false;
+  return jobs.some(
+    (job) => job.id !== id && normalizeJobNumber(job.jobNumber) === normalized,
+  );
+}
+
 export function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -165,7 +195,24 @@ export function isPrimaryTech(name: string): name is PrimaryTech {
 }
 
 export function isClosedStatus(status: string): boolean {
-  return status === "Invoice Paid";
+  return status === "Invoice Paid" || status === "Completed";
+}
+
+/** Empty OK. Presets OK. Custom Other… phrases must be readable — no negatives or absurd junk. */
+export function timeExpectationError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if ((TIME_PRESETS as readonly string[]).includes(trimmed)) return null;
+  if (/^-/.test(trimmed) || /\b-\d/.test(trimmed)) {
+    return "Time can't be a negative or minus-only value";
+  }
+  if (/\b\d{3,}\s*days?\b/i.test(trimmed)) {
+    return "Time looks like junk — use a readable phrase";
+  }
+  if (/^[-.\s]+$/.test(trimmed)) {
+    return "Enter a readable time expectation";
+  }
+  return null;
 }
 
 export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {

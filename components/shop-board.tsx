@@ -1,6 +1,14 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+} from "react";
 import {
   NEXT_ACTION_PRESETS,
   PIPELINE_STATUSES,
@@ -11,8 +19,13 @@ import {
   emptyDraft,
   getJobsSnapshot,
   getServerJobsSnapshot,
+  hasDuplicateJobNumber,
   isClosedStatus,
+  isValidJobNumber,
+  jobNumberError,
+  normalizeJobNumber,
   saveJobs,
+  timeExpectationError,
   statusTone,
   subscribeJobs,
   type CartJob,
@@ -55,8 +68,9 @@ const STATUS_CHIP: Record<StatusTone, string> = {
 };
 
 const OTHER_VALUE = "__other__";
+const HIT = "min-h-11 min-w-11";
 const inputClass =
-  "min-h-10 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground";
+  `${HIT} min-w-0 w-full max-w-full rounded-md border border-border bg-background px-2 text-sm text-foreground`;
 
 export function ShopBoard() {
   const jobs = useSyncExternalStore(subscribeJobs, getJobsSnapshot, getServerJobsSnapshot);
@@ -77,6 +91,17 @@ export function ShopBoard() {
   const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
   const updateJob = (id: string, patch: Partial<CartJob>) => {
+    if (patch.jobNumber !== undefined) {
+      if (!isValidJobNumber(patch.jobNumber)) return;
+      if (hasDuplicateJobNumber(jobs, id, patch.jobNumber)) return;
+      patch = { ...patch, jobNumber: normalizeJobNumber(patch.jobNumber) };
+    }
+    if (
+      patch.timeExpectation !== undefined &&
+      timeExpectationError(patch.timeExpectation)
+    ) {
+      return;
+    }
     persist(
       jobs.map((job) =>
         job.id === id ? { ...job, ...patch, updatedAt: Date.now() } : job,
@@ -102,8 +127,8 @@ export function ShopBoard() {
   };
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="border-b border-border bg-surface px-3 py-4 sm:px-5">
+    <div className="flex min-h-full flex-col overflow-x-hidden">
+      <header className="border-b border-border bg-surface px-3 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
@@ -121,7 +146,7 @@ export function ShopBoard() {
             <button
               type="button"
               onClick={addRow}
-              className="min-h-11 rounded-lg bg-accent px-5 text-base font-bold text-accent-ink"
+              className={`${HIT} rounded-lg bg-accent px-5 text-base font-bold text-accent-ink`}
             >
               Add row
             </button>
@@ -129,9 +154,82 @@ export function ShopBoard() {
         </div>
       </header>
 
-      <main className="flex-1 px-2 py-3 sm:px-4">
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-          <table className="w-full min-w-[1180px] border-collapse text-left">
+      <main className="flex-1 px-2 py-3">
+        <div className="mb-3 flex flex-col gap-2 md:hidden">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sort</p>
+          <div className="flex flex-wrap items-center gap-1">
+            <SortHeader column="customerName" label="Customer" sort={sort} onSort={changeSort} />
+            <SortHeader column="jobNumber" label="Job #" sort={sort} onSort={changeSort} />
+            <SortHeader column="primaryTech" label="Tech" sort={sort} onSort={changeSort} />
+            <SortHeader column="status" label="Status" sort={sort} onSort={changeSort} />
+            <SortHeader column="nextAction" label="Next" sort={sort} onSort={changeSort} />
+            <SortHeader column="timeExpectation" label="Time" sort={sort} onSort={changeSort} />
+            <StatusModeToggle sort={sort} onStatusMode={changeStatusMode} />
+          </div>
+        </div>
+
+        <ul className="grid gap-3 md:hidden">
+          {visibleJobs.map((job) => (
+            <li key={job.id} className="rounded-lg border border-border bg-surface p-2">
+              <div className="grid gap-2">
+                <FieldLabel>Customer + job</FieldLabel>
+                <IdentityFields job={job} jobs={jobs} onChange={updateJob} />
+                <FieldLabel>Primary tech</FieldLabel>
+                <ComboCell
+                  value={job.primaryTech}
+                  options={PRIMARY_TECHS}
+                  emptyLabel="Unassigned"
+                  placeholder="Type a tech name"
+                  layout="row"
+                  onChange={(primaryTech) => updateJob(job.id, { primaryTech })}
+                />
+                <FieldLabel>Status</FieldLabel>
+                <ComboCell
+                  value={job.status}
+                  options={PIPELINE_STATUSES}
+                  placeholder="Type a status"
+                  layout="row"
+                  selectClassName={`font-semibold ${STATUS_CHIP[statusTone(job.status)]}`}
+                  onChange={(status) => updateJob(job.id, { status })}
+                />
+                <FieldLabel>Next action</FieldLabel>
+                <ComboCell
+                  value={job.nextAction}
+                  options={NEXT_ACTION_PRESETS}
+                  placeholder="What happens next?"
+                  layout="row"
+                  onChange={(nextAction) => updateJob(job.id, { nextAction })}
+                />
+                <FieldLabel>Time expectation</FieldLabel>
+                <ComboCell
+                  value={job.timeExpectation}
+                  options={TIME_PRESETS}
+                  placeholder="ETA / due / promised"
+                  layout="row"
+                  errorFor={timeExpectationError}
+                  onChange={(timeExpectation) => updateJob(job.id, { timeExpectation })}
+                />
+                <DeleteControl
+                  pending={pendingDelete === job.id}
+                  onAsk={() => setPendingDelete(job.id)}
+                  onConfirm={() => deleteJob(job.id)}
+                  onKeep={() => setPendingDelete(null)}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="hidden overflow-visible rounded-lg border border-border bg-surface md:block">
+          <table className="w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-[17%]" />
+              <col className="w-[16%]" />
+              <col className="w-[20%]" />
+              <col className="w-[18%]" />
+              <col className="w-[16%]" />
+              <col className="w-[13%]" />
+            </colgroup>
             <thead className="bg-surface-2 text-sm">
               <tr>
                 <th
@@ -140,54 +238,54 @@ export function ShopBoard() {
                       ? headerSort(sort, sort.column)
                       : "none"
                   }
-                  className="sticky left-0 z-20 min-w-52 border-r border-border bg-surface-2 px-2 py-2 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]"
+                  className="sticky left-0 z-20 border-r border-border bg-surface-2 px-1 py-1"
                 >
-                  <div className="flex flex-col items-start gap-0.5">
+                  <div className="flex min-w-0 flex-col items-start gap-0.5">
                     <SortHeader
                       column="customerName"
-                      label="Customer name"
+                      label="Customer"
                       sort={sort}
                       onSort={changeSort}
                     />
                     <SortHeader
                       column="jobNumber"
-                      label="Job number"
+                      label="Job #"
                       sort={sort}
                       onSort={changeSort}
                     />
                   </div>
                 </th>
-                <th aria-sort={headerSort(sort, "primaryTech")} className="px-2 py-2">
+                <th aria-sort={headerSort(sort, "primaryTech")} className="px-1 py-1">
                   <SortHeader
                     column="primaryTech"
-                    label="Primary tech"
+                    label="Tech"
                     sort={sort}
                     onSort={changeSort}
                   />
                 </th>
-                <th aria-sort={headerSort(sort, "status")} className="px-2 py-2">
-                  <div className="flex flex-col items-start gap-1">
+                <th aria-sort={headerSort(sort, "status")} className="px-1 py-1">
+                  <div className="flex min-w-0 flex-col items-start gap-1">
                     <SortHeader column="status" label="Status" sort={sort} onSort={changeSort} />
                     <StatusModeToggle sort={sort} onStatusMode={changeStatusMode} />
                   </div>
                 </th>
-                <th aria-sort={headerSort(sort, "nextAction")} className="px-2 py-2">
+                <th aria-sort={headerSort(sort, "nextAction")} className="px-1 py-1">
                   <SortHeader
                     column="nextAction"
-                    label="Next action"
+                    label="Next"
                     sort={sort}
                     onSort={changeSort}
                   />
                 </th>
-                <th aria-sort={headerSort(sort, "timeExpectation")} className="px-2 py-2">
+                <th aria-sort={headerSort(sort, "timeExpectation")} className="px-1 py-1">
                   <SortHeader
                     column="timeExpectation"
-                    label="Time expectation"
+                    label="Time"
                     sort={sort}
                     onSort={changeSort}
                   />
                 </th>
-                <th className="px-2 py-2">
+                <th className="sticky right-0 z-20 bg-surface-2 px-1 py-1">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
@@ -195,95 +293,51 @@ export function ShopBoard() {
             <tbody>
               {visibleJobs.map((job) => (
                 <tr key={job.id} className="border-t border-border align-top">
-                  <td className="sticky left-0 z-10 border-r border-border bg-surface px-2 py-2 shadow-[6px_0_10px_-6px_rgba(0,0,0,0.65)]">
-                    <div className="flex min-w-48 flex-col gap-1">
-                      <input
-                        aria-label="Customer name"
-                        value={job.customerName}
-                        onChange={(event) =>
-                          updateJob(job.id, { customerName: event.target.value })
-                        }
-                        placeholder="Customer name"
-                        className={`${inputClass} font-semibold`}
-                      />
-                      <input
-                        aria-label="Job number"
-                        value={job.jobNumber}
-                        onChange={(event) =>
-                          updateJob(job.id, { jobNumber: event.target.value })
-                        }
-                        placeholder="Job #"
-                        className={`${inputClass} font-mono`}
-                      />
-                    </div>
+                  <td className="sticky left-0 z-10 border-r border-border bg-surface px-1 py-1">
+                    <IdentityFields job={job} jobs={jobs} onChange={updateJob} />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.primaryTech}
                       options={PRIMARY_TECHS}
                       emptyLabel="Unassigned"
-                      placeholder="Type a tech name"
+                      placeholder="Tech name"
                       onChange={(primaryTech) => updateJob(job.id, { primaryTech })}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.status}
                       options={PIPELINE_STATUSES}
-                      placeholder="Type a status"
-                      badge={
-                        <span
-                          className={`inline-flex min-h-6 items-center rounded-full px-2 text-xs font-bold ${STATUS_CHIP[statusTone(job.status)]}`}
-                        >
-                          {job.status || "—"}
-                        </span>
-                      }
+                      placeholder="Status"
+                      selectClassName={`font-semibold ${STATUS_CHIP[statusTone(job.status)]}`}
                       onChange={(status) => updateJob(job.id, { status })}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.nextAction}
                       options={NEXT_ACTION_PRESETS}
-                      placeholder="What happens next?"
+                      placeholder="Next"
                       onChange={(nextAction) => updateJob(job.id, { nextAction })}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.timeExpectation}
                       options={TIME_PRESETS}
-                      placeholder="ETA / due / promised"
+                      placeholder="Time"
+                      errorFor={timeExpectationError}
                       onChange={(timeExpectation) => updateJob(job.id, { timeExpectation })}
                     />
                   </td>
-                  <td className="px-2 py-2">
-                    {pendingDelete === job.id ? (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          type="button"
-                          onClick={() => deleteJob(job.id)}
-                          className="min-h-10 rounded-md bg-danger px-3 text-sm font-bold text-accent-ink"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPendingDelete(null)}
-                          className="min-h-10 rounded-md border border-border px-3 text-sm font-semibold"
-                        >
-                          Keep
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setPendingDelete(job.id)}
-                        className="min-h-10 rounded-md border border-danger/50 px-3 text-sm font-semibold text-danger"
-                      >
-                        Delete
-                      </button>
-                    )}
+                  <td className="sticky right-0 z-10 bg-surface px-1 py-1">
+                    <DeleteControl
+                      pending={pendingDelete === job.id}
+                      onAsk={() => setPendingDelete(job.id)}
+                      onConfirm={() => deleteJob(job.id)}
+                      onKeep={() => setPendingDelete(null)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -298,52 +352,314 @@ export function ShopBoard() {
   );
 }
 
+function FieldLabel({ children }: { children: string }) {
+  return <p className="text-xs font-semibold uppercase tracking-wide text-muted">{children}</p>;
+}
+
+function IdentityFields({
+  job,
+  jobs,
+  onChange,
+}: {
+  job: CartJob;
+  jobs: CartJob[];
+  onChange: (id: string, patch: Partial<CartJob>) => void;
+}) {
+  const [nameDraft, setNameDraft] = useState(job.customerName);
+  const [jobDraft, setJobDraft] = useState(job.jobNumber);
+  const [warning, setWarning] = useState("");
+
+  useEffect(() => {
+    setNameDraft(job.customerName);
+  }, [job.customerName]);
+
+  useEffect(() => {
+    setJobDraft(job.jobNumber);
+  }, [job.jobNumber]);
+
+  const changeJobNumber = (next: string) => {
+    setJobDraft(next);
+    const formatError = jobNumberError(next);
+    if (formatError) {
+      setWarning(formatError);
+      return;
+    }
+    if (hasDuplicateJobNumber(jobs, job.id, next)) {
+      setWarning(`Job # ${normalizeJobNumber(next)} is already on the board`);
+      return;
+    }
+    setWarning("");
+    onChange(job.id, { jobNumber: next });
+  };
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <input
+        aria-label="Customer name"
+        value={nameDraft}
+        onChange={(event) => {
+          setNameDraft(event.target.value);
+          onChange(job.id, { customerName: event.target.value });
+        }}
+        onBlur={() => {
+          const trimmed = nameDraft.trim();
+          setNameDraft(trimmed);
+          if (trimmed !== job.customerName) {
+            onChange(job.id, { customerName: trimmed });
+          }
+        }}
+        placeholder="Customer name"
+        className={`${inputClass} font-semibold`}
+      />
+      <input
+        aria-label="Job number"
+        inputMode="numeric"
+        value={jobDraft}
+        onChange={(event) => changeJobNumber(event.target.value)}
+        onBlur={() => {
+          if (warning) setJobDraft(job.jobNumber);
+        }}
+        aria-invalid={Boolean(warning)}
+        placeholder="1851 or 17312-1"
+        className={`${inputClass} font-mono ${warning ? "border-danger" : ""}`}
+      />
+      {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
+    </div>
+  );
+}
+
+function DeleteControl({
+  pending,
+  onAsk,
+  onConfirm,
+  onKeep,
+}: {
+  pending: boolean;
+  onAsk: () => void;
+  onConfirm: () => void;
+  onKeep: () => void;
+}) {
+  if (pending) {
+    return (
+      <div className="flex min-w-0 flex-col gap-1">
+        <button
+          type="button"
+          onClick={onConfirm}
+          className={`${HIT} rounded-md bg-danger px-3 text-sm font-bold text-accent-ink`}
+        >
+          Confirm
+        </button>
+        <button
+          type="button"
+          onClick={onKeep}
+          className={`${HIT} rounded-md border border-border px-3 text-sm font-semibold`}
+        >
+          Keep
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onAsk}
+      className={`${HIT} rounded-md border border-danger/50 px-3 text-sm font-semibold text-danger`}
+    >
+      Delete
+    </button>
+  );
+}
+
 function ComboCell({
   value,
   options,
   onChange,
   emptyLabel,
   placeholder,
-  badge,
+  selectClassName,
+  layout = "stack",
+  errorFor,
 }: {
   value: string;
   options: readonly string[];
   onChange: (value: string) => void;
   emptyLabel?: string;
   placeholder?: string;
-  badge?: ReactNode;
+  selectClassName?: string;
+  layout?: "stack" | "row";
+  errorFor?: (next: string) => string | null;
 }) {
-  const known =
-    (emptyLabel !== undefined && value === "") || options.includes(value);
-  const selectValue = known ? value : OTHER_VALUE;
+  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pickedOther, setPickedOther] = useState(false);
+  const [textDraft, setTextDraft] = useState(value);
+  const [warning, setWarning] = useState("");
+  const menuOptions = [
+    ...(emptyLabel !== undefined ? [{ value: "", label: emptyLabel }] : []),
+    ...options.map((option) => ({ value: option, label: option })),
+    { value: OTHER_VALUE, label: "Other…" },
+  ];
+  const isKnown = value === "" || options.includes(value);
+  const showText = !isKnown || pickedOther;
+  const currentIndex = showText
+    ? menuOptions.findIndex((option) => option.value === OTHER_VALUE)
+    : Math.max(
+        0,
+        menuOptions.findIndex((option) => option.value === value),
+      );
+  const [highlight, setHighlight] = useState(currentIndex);
+
+  const closeWithoutCommit = () => {
+    setOpen(false);
+    setHighlight(currentIndex);
+  };
+
+  const commit = (next: string) => {
+    setOpen(false);
+    if (next === OTHER_VALUE) {
+      setPickedOther(true);
+      setTextDraft("");
+      setWarning("");
+      queueMicrotask(() => textRef.current?.focus());
+      return;
+    }
+    setPickedOther(false);
+    setWarning("");
+    setTextDraft(next);
+    onChange(next);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        closeWithoutCommit();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeWithoutCommit();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        setHighlight(currentIndex);
+        setOpen(true);
+        return;
+      }
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setHighlight((index) => (index + delta + menuOptions.length) % menuOptions.length);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (!open) {
+        setHighlight(currentIndex);
+        setOpen(true);
+        return;
+      }
+      commit(menuOptions[highlight]?.value ?? value);
+    }
+  };
+
+  const display = showText
+    ? "Other…"
+    : emptyLabel !== undefined && value === ""
+      ? emptyLabel
+      : value;
 
   return (
-    <div className="flex min-w-44 flex-col gap-1">
-      {badge}
-      <select
-        aria-label="Choose a saved option"
-        value={selectValue}
-        onChange={(event) => {
-          if (event.target.value === OTHER_VALUE) return;
-          onChange(event.target.value);
-        }}
-        className={inputClass}
-      >
-        {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-        <option value={OTHER_VALUE}>Other…</option>
-      </select>
-      <input
-        aria-label="Free text"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className={inputClass}
-      />
+    <div
+      ref={rootRef}
+      className={
+        layout === "row" && showText
+          ? "grid min-w-0 grid-cols-2 gap-1"
+          : "flex min-w-0 w-full flex-col gap-1"
+      }
+    >
+      <div className="relative min-w-0">
+        <button
+          type="button"
+          aria-label="Choose a saved option"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listId}
+          role="combobox"
+          onClick={() => {
+            if (open) {
+              closeWithoutCommit();
+              return;
+            }
+            setHighlight(currentIndex);
+            setOpen(true);
+          }}
+          onKeyDown={onTriggerKeyDown}
+          className={`${inputClass} truncate text-left ${selectClassName ?? ""}`}
+        >
+          {display}
+        </button>
+        {open ? (
+          <ul
+            id={listId}
+            role="listbox"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeWithoutCommit();
+              }
+            }}
+            className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 shadow-2xl"
+          >
+            {menuOptions.map((option, index) => (
+              <li key={`${option.label}-${index}`}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === highlight}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => commit(option.value)}
+                  className={`flex w-full items-center truncate px-2 text-left text-sm ${
+                    index === highlight ? "bg-accent text-accent-ink" : "hover:bg-surface-2"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      {showText ? (
+        <input
+          ref={textRef}
+          aria-label="Free text"
+          value={isKnown && pickedOther ? textDraft || "" : warning ? textDraft : value}
+          onChange={(event) => {
+            const next = event.target.value;
+            setPickedOther(true);
+            setTextDraft(next);
+            const error = errorFor?.(next) ?? null;
+            if (error) {
+              setWarning(error);
+              return;
+            }
+            setWarning("");
+            onChange(next);
+          }}
+          placeholder={placeholder}
+          aria-invalid={Boolean(warning)}
+          className={`${inputClass} ${warning ? "border-danger" : ""}`}
+        />
+      ) : null}
+      {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
     </div>
   );
 }
@@ -382,7 +698,7 @@ function SortHeader({
       type="button"
       onClick={() => onSort(column)}
       aria-pressed={active}
-      className={`inline-flex min-h-9 items-center gap-1 rounded px-1 text-left text-sm font-semibold hover:text-foreground ${
+      className={`inline-flex ${HIT} max-w-full items-center gap-1 rounded px-2 text-left text-sm font-semibold hover:text-foreground ${
         active ? "text-accent" : "text-muted"
       }`}
     >
@@ -407,7 +723,7 @@ function StatusModeToggle({
       <button
         type="button"
         onClick={() => onStatusMode("pipeline")}
-        className={`min-h-8 rounded px-2 text-xs font-semibold ${
+        className={`${HIT} rounded px-3 text-sm font-semibold ${
           active && sort.statusMode === "pipeline"
             ? "bg-accent text-accent-ink"
             : "border border-border text-muted"
@@ -418,7 +734,7 @@ function StatusModeToggle({
       <button
         type="button"
         onClick={() => onStatusMode("alpha")}
-        className={`min-h-8 rounded px-2 text-xs font-semibold ${
+        className={`${HIT} rounded px-3 text-sm font-semibold ${
           active && sort.statusMode === "alpha"
             ? "bg-accent text-accent-ink"
             : "border border-border text-muted"
