@@ -6,23 +6,28 @@ This is **not CartScope**. CartScope (`cart-scope.vercel.app`) is diagnostics. T
 
 Merging to `main` updates that live URL. Do not attach this repo to the CartScope Vercel project.
 
-## Layout
+## What it does
 
-Spreadsheet on one page — not a kanban or card board. Every field edits inline. No separate edit modal.
+Spreadsheet on one page — every field still edits inline. No required edit modal.
 
-- **Left (sticky identity column):** customer name + Housecall Pro job number together (inline text)
-- **Right:** Primary tech, Status, Next action, Time expectation, Actions (delete / add row)
+On top of that v2 adds a real shop-floor command center:
 
-Tablet keeps the same compact table (horizontal scroll). Add row inserts a blank line on this page.
+- **Stats strip:** open, hot, due today, parts, unassigned, stuck 3+ days
+- **Search** plus filters by tech, hot, due, parts, pickup, stale, closed
+- **Cart details:** year / make / model / color, bay, phone, notes, activity log
+- **Flags:** Hot, Promised, Waiting — left bar on the row
+- **Aging:** days in the current Housecall Pro stage
+- **Advance:** one tap moves the job to the next pipeline status
+- **Queue view:** jobs grouped by Housecall Pro stage (bottlenecks, not a kanban)
+- **Wall display** at `/wall` for the shop TV
+- **Export / import JSON**, print, undo delete
+- **Keyboard:** `N` add cart, `/` search, `Esc` close details
 
-Primary tech, Status, Next action, and Time expectation each have a **dropdown of known options plus a free-text box**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned. Other… is always available.
+Tablet uses compact cards. Add cart inserts a blank line. Details open in a side drawer — the main grid stays inline.
+
+Primary tech, Status, Next action, Time, Bay, and Make each have a **dropdown of known options plus a free-text box**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 
 Click a column header to sort. Click again to flip A–Z / Z–A. The last sort is remembered in the browser.
-
-- **Customer name, Primary tech, Next action:** A–Z / Z–A
-- **Job number:** numeric-aware (1842 before 18510)
-- **Status:** two modes — Housecall Pro pipeline order (New Job before Completed) **and** plain A–Z / Z–A. Click Status to cycle pipeline ▲ → pipeline ▼ → A–Z → Z–A, or use the Pipeline / A–Z buttons.
-- **Time expectation:** best-effort date/relative parse (`today`, weekday, `4:00 PM`); otherwise A–Z
 
 ## Primary tech
 
@@ -32,7 +37,7 @@ Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team 
 - Ryan Gorgoglione
 - Hayden Silva
 
-Unassigned is allowed. Seed rows use only these names (Trey Fontenot is unassigned).
+Unassigned is allowed.
 
 ## Statuses (Housecall Pro jobs pipeline)
 
@@ -65,9 +70,7 @@ Status is a dropdown of the live NGC Housecall Pro **Jobs** pipeline stages (Pip
 25. On Hold
 26. Invoice Paid
 
-Seed rows use only these labels.
-
-v1 stores data in the browser (`localStorage`). The first load seeds example carts so the board is not empty. No login.
+v2 stores data in the browser (`localStorage` key `ngc-shop-board-v6`). First load seeds example carts so the board is not empty. Existing v5 boards migrate automatically. No login.
 
 ## Local run
 
@@ -78,7 +81,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Wall display: [http://localhost:3000/wall](http://localhost:3000/wall).
 
 ```bash
 npm run build

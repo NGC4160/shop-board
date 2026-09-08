@@ -1,5 +1,5 @@
-import { ShopBoard } from "@/components/shop-board";
+import { ShopApp } from "@/components/shop/shop-app";
 
 export default function Home() {
-  return <ShopBoard />;
+  return <ShopApp />;
 }
