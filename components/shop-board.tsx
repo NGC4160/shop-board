@@ -1,6 +1,14 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+} from "react";
 import {
   NEXT_ACTION_PRESETS,
   PIPELINE_STATUSES,
@@ -11,7 +19,9 @@ import {
   emptyDraft,
   getJobsSnapshot,
   getServerJobsSnapshot,
+  hasDuplicateJobNumber,
   isClosedStatus,
+  normalizeJobNumber,
   saveJobs,
   statusTone,
   subscribeJobs,
@@ -78,6 +88,12 @@ export function ShopBoard() {
   const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
   const updateJob = (id: string, patch: Partial<CartJob>) => {
+    if (
+      patch.jobNumber !== undefined &&
+      hasDuplicateJobNumber(jobs, id, patch.jobNumber)
+    ) {
+      return;
+    }
     persist(
       jobs.map((job) =>
         job.id === id ? { ...job, ...patch, updatedAt: Date.now() } : job,
@@ -149,7 +165,7 @@ export function ShopBoard() {
             <li key={job.id} className="rounded-lg border border-border bg-surface p-2">
               <div className="grid gap-2">
                 <FieldLabel>Customer + job</FieldLabel>
-                <IdentityFields job={job} onChange={updateJob} />
+                <IdentityFields job={job} jobs={jobs} onChange={updateJob} />
                 <FieldLabel>Primary tech</FieldLabel>
                 <ComboCell
                   value={job.primaryTech}
@@ -195,7 +211,7 @@ export function ShopBoard() {
           ))}
         </ul>
 
-        <div className="hidden overflow-hidden rounded-lg border border-border bg-surface md:block">
+        <div className="hidden overflow-visible rounded-lg border border-border bg-surface md:block">
           <table className="w-full table-fixed border-collapse text-left">
             <colgroup>
               <col className="w-[17%]" />
@@ -269,9 +285,9 @@ export function ShopBoard() {
               {visibleJobs.map((job) => (
                 <tr key={job.id} className="border-t border-border align-top">
                   <td className="sticky left-0 z-10 border-r border-border bg-surface px-1 py-1">
-                    <IdentityFields job={job} onChange={updateJob} />
+                    <IdentityFields job={job} jobs={jobs} onChange={updateJob} />
                   </td>
-                  <td className="overflow-hidden px-1 py-1">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.primaryTech}
                       options={PRIMARY_TECHS}
@@ -280,7 +296,7 @@ export function ShopBoard() {
                       onChange={(primaryTech) => updateJob(job.id, { primaryTech })}
                     />
                   </td>
-                  <td className="overflow-hidden px-1 py-1">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.status}
                       options={PIPELINE_STATUSES}
@@ -289,7 +305,7 @@ export function ShopBoard() {
                       onChange={(status) => updateJob(job.id, { status })}
                     />
                   </td>
-                  <td className="overflow-hidden px-1 py-1">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.nextAction}
                       options={NEXT_ACTION_PRESETS}
@@ -297,7 +313,7 @@ export function ShopBoard() {
                       onChange={(nextAction) => updateJob(job.id, { nextAction })}
                     />
                   </td>
-                  <td className="overflow-hidden px-1 py-1">
+                  <td className="overflow-visible px-1 py-1">
                     <ComboCell
                       value={job.timeExpectation}
                       options={TIME_PRESETS}
@@ -332,11 +348,30 @@ function FieldLabel({ children }: { children: string }) {
 
 function IdentityFields({
   job,
+  jobs,
   onChange,
 }: {
   job: CartJob;
+  jobs: CartJob[];
   onChange: (id: string, patch: Partial<CartJob>) => void;
 }) {
+  const [jobDraft, setJobDraft] = useState(job.jobNumber);
+  const [warning, setWarning] = useState("");
+
+  useEffect(() => {
+    setJobDraft(job.jobNumber);
+  }, [job.jobNumber]);
+
+  const changeJobNumber = (next: string) => {
+    setJobDraft(next);
+    if (hasDuplicateJobNumber(jobs, job.id, next)) {
+      setWarning(`Job # ${normalizeJobNumber(next)} is already on the board`);
+      return;
+    }
+    setWarning("");
+    onChange(job.id, { jobNumber: next });
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <input
@@ -348,11 +383,16 @@ function IdentityFields({
       />
       <input
         aria-label="Job number"
-        value={job.jobNumber}
-        onChange={(event) => onChange(job.id, { jobNumber: event.target.value })}
+        value={jobDraft}
+        onChange={(event) => changeJobNumber(event.target.value)}
+        onBlur={() => {
+          if (warning) setJobDraft(job.jobNumber);
+        }}
+        aria-invalid={Boolean(warning)}
         placeholder="Job #"
-        className={`${inputClass} font-mono`}
+        className={`${inputClass} font-mono ${warning ? "border-danger" : ""}`}
       />
+      {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
     </div>
   );
 }
@@ -416,36 +456,140 @@ function ComboCell({
   selectClassName?: string;
   layout?: "stack" | "row";
 }) {
-  const known =
-    (emptyLabel !== undefined && value === "") || options.includes(value);
-  const selectValue = known ? value : OTHER_VALUE;
+  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const menuOptions = [
+    ...(emptyLabel !== undefined ? [{ value: "", label: emptyLabel }] : []),
+    ...options.map((option) => ({ value: option, label: option })),
+    { value: OTHER_VALUE, label: "Other…" },
+  ];
+  const currentIndex = Math.max(
+    0,
+    menuOptions.findIndex((option) => option.value === value),
+  );
+  const [highlight, setHighlight] = useState(currentIndex);
+
+  const closeWithoutCommit = () => {
+    setOpen(false);
+    setHighlight(currentIndex);
+  };
+
+  const commit = (next: string) => {
+    setOpen(false);
+    if (next === OTHER_VALUE) {
+      textRef.current?.focus();
+      return;
+    }
+    onChange(next);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        closeWithoutCommit();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeWithoutCommit();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        setHighlight(currentIndex);
+        setOpen(true);
+        return;
+      }
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setHighlight((index) => (index + delta + menuOptions.length) % menuOptions.length);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (!open) {
+        setHighlight(currentIndex);
+        setOpen(true);
+        return;
+      }
+      commit(menuOptions[highlight]?.value ?? value);
+    }
+  };
+
+  const display =
+    emptyLabel !== undefined && value === "" ? emptyLabel : value || "Other…";
 
   return (
     <div
+      ref={rootRef}
       className={
         layout === "row"
           ? "grid min-w-0 grid-cols-2 gap-1"
           : "flex min-w-0 w-full flex-col gap-1"
       }
     >
-      <select
-        aria-label="Choose a saved option"
-        value={selectValue}
-        onChange={(event) => {
-          if (event.target.value === OTHER_VALUE) return;
-          onChange(event.target.value);
-        }}
-        className={`${inputClass} ${selectClassName ?? ""}`}
-      >
-        {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-        <option value={OTHER_VALUE}>Other…</option>
-      </select>
+      <div className="relative min-w-0">
+        <button
+          type="button"
+          aria-label="Choose a saved option"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={listId}
+          role="combobox"
+          onClick={() => {
+            if (open) {
+              closeWithoutCommit();
+              return;
+            }
+            setHighlight(currentIndex);
+            setOpen(true);
+          }}
+          onKeyDown={onTriggerKeyDown}
+          className={`${inputClass} truncate text-left ${selectClassName ?? ""}`}
+        >
+          {display}
+        </button>
+        {open ? (
+          <ul
+            id={listId}
+            role="listbox"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeWithoutCommit();
+              }
+            }}
+            className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-md border border-border bg-background py-1 shadow-2xl"
+          >
+            {menuOptions.map((option, index) => (
+              <li key={`${option.label}-${index}`}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === highlight}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => commit(option.value)}
+                  className={`flex w-full items-center truncate px-2 text-left text-sm ${
+                    index === highlight ? "bg-accent text-accent-ink" : "hover:bg-surface-2"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
       <input
+        ref={textRef}
         aria-label="Free text"
         value={value}
         onChange={(event) => onChange(event.target.value)}

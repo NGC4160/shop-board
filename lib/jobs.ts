@@ -149,6 +149,22 @@ export const seedJobs: CartJob[] = [
   },
 ];
 
+export function normalizeJobNumber(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+export function hasDuplicateJobNumber(
+  jobs: CartJob[],
+  id: string,
+  jobNumber: string,
+): boolean {
+  const normalized = normalizeJobNumber(jobNumber);
+  if (!normalized) return false;
+  return jobs.some(
+    (job) => job.id !== id && normalizeJobNumber(job.jobNumber) === normalized,
+  );
+}
+
 export function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
