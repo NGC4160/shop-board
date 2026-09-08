@@ -21,6 +21,8 @@ import {
   getServerJobsSnapshot,
   hasDuplicateJobNumber,
   isClosedStatus,
+  isValidJobNumber,
+  jobNumberError,
   normalizeJobNumber,
   saveJobs,
   statusTone,
@@ -88,11 +90,10 @@ export function ShopBoard() {
   const openCount = visibleJobs.filter((job) => !isClosedStatus(job.status)).length;
 
   const updateJob = (id: string, patch: Partial<CartJob>) => {
-    if (
-      patch.jobNumber !== undefined &&
-      hasDuplicateJobNumber(jobs, id, patch.jobNumber)
-    ) {
-      return;
+    if (patch.jobNumber !== undefined) {
+      if (!isValidJobNumber(patch.jobNumber)) return;
+      if (hasDuplicateJobNumber(jobs, id, patch.jobNumber)) return;
+      patch = { ...patch, jobNumber: normalizeJobNumber(patch.jobNumber) };
     }
     persist(
       jobs.map((job) =>
@@ -355,8 +356,13 @@ function IdentityFields({
   jobs: CartJob[];
   onChange: (id: string, patch: Partial<CartJob>) => void;
 }) {
+  const [nameDraft, setNameDraft] = useState(job.customerName);
   const [jobDraft, setJobDraft] = useState(job.jobNumber);
   const [warning, setWarning] = useState("");
+
+  useEffect(() => {
+    setNameDraft(job.customerName);
+  }, [job.customerName]);
 
   useEffect(() => {
     setJobDraft(job.jobNumber);
@@ -364,6 +370,11 @@ function IdentityFields({
 
   const changeJobNumber = (next: string) => {
     setJobDraft(next);
+    const formatError = jobNumberError(next);
+    if (formatError) {
+      setWarning(formatError);
+      return;
+    }
     if (hasDuplicateJobNumber(jobs, job.id, next)) {
       setWarning(`Job # ${normalizeJobNumber(next)} is already on the board`);
       return;
@@ -376,20 +387,31 @@ function IdentityFields({
     <div className="flex min-w-0 flex-col gap-1">
       <input
         aria-label="Customer name"
-        value={job.customerName}
-        onChange={(event) => onChange(job.id, { customerName: event.target.value })}
+        value={nameDraft}
+        onChange={(event) => {
+          setNameDraft(event.target.value);
+          onChange(job.id, { customerName: event.target.value });
+        }}
+        onBlur={() => {
+          const trimmed = nameDraft.trim();
+          setNameDraft(trimmed);
+          if (trimmed !== job.customerName) {
+            onChange(job.id, { customerName: trimmed });
+          }
+        }}
         placeholder="Customer name"
         className={`${inputClass} font-semibold`}
       />
       <input
         aria-label="Job number"
+        inputMode="numeric"
         value={jobDraft}
         onChange={(event) => changeJobNumber(event.target.value)}
         onBlur={() => {
           if (warning) setJobDraft(job.jobNumber);
         }}
         aria-invalid={Boolean(warning)}
-        placeholder="Job #"
+        placeholder="1851 or 17312-1"
         className={`${inputClass} font-mono ${warning ? "border-danger" : ""}`}
       />
       {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
@@ -460,15 +482,21 @@ function ComboCell({
   const rootRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [pickedOther, setPickedOther] = useState(false);
   const menuOptions = [
     ...(emptyLabel !== undefined ? [{ value: "", label: emptyLabel }] : []),
     ...options.map((option) => ({ value: option, label: option })),
     { value: OTHER_VALUE, label: "Other…" },
   ];
-  const currentIndex = Math.max(
-    0,
-    menuOptions.findIndex((option) => option.value === value),
-  );
+  const isKnown =
+    (emptyLabel !== undefined && value === "") || options.includes(value);
+  const showText = !isKnown || pickedOther;
+  const currentIndex = showText
+    ? menuOptions.findIndex((option) => option.value === OTHER_VALUE)
+    : Math.max(
+        0,
+        menuOptions.findIndex((option) => option.value === value),
+      );
   const [highlight, setHighlight] = useState(currentIndex);
 
   const closeWithoutCommit = () => {
@@ -479,9 +507,11 @@ function ComboCell({
   const commit = (next: string) => {
     setOpen(false);
     if (next === OTHER_VALUE) {
-      textRef.current?.focus();
+      setPickedOther(true);
+      queueMicrotask(() => textRef.current?.focus());
       return;
     }
+    setPickedOther(false);
     onChange(next);
   };
 
@@ -524,14 +554,17 @@ function ComboCell({
     }
   };
 
-  const display =
-    emptyLabel !== undefined && value === "" ? emptyLabel : value || "Other…";
+  const display = showText
+    ? "Other…"
+    : emptyLabel !== undefined && value === ""
+      ? emptyLabel
+      : value;
 
   return (
     <div
       ref={rootRef}
       className={
-        layout === "row"
+        layout === "row" && showText
           ? "grid min-w-0 grid-cols-2 gap-1"
           : "flex min-w-0 w-full flex-col gap-1"
       }
@@ -588,14 +621,19 @@ function ComboCell({
           </ul>
         ) : null}
       </div>
-      <input
-        ref={textRef}
-        aria-label="Free text"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className={inputClass}
-      />
+      {showText ? (
+        <input
+          ref={textRef}
+          aria-label="Free text"
+          value={isKnown && pickedOther ? "" : value}
+          onChange={(event) => {
+            setPickedOther(true);
+            onChange(event.target.value);
+          }}
+          placeholder={placeholder}
+          className={inputClass}
+        />
+      ) : null}
     </div>
   );
 }

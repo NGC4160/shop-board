@@ -153,6 +153,20 @@ export function normalizeJobNumber(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+/** Digits, or HCP-style suffix like 17312-1. Empty is allowed for a new row. */
+const JOB_NUMBER_PATTERN = /^\d+(-\d+)?$/;
+
+export function isValidJobNumber(value: string): boolean {
+  const normalized = normalizeJobNumber(value);
+  if (!normalized) return true;
+  return JOB_NUMBER_PATTERN.test(normalized);
+}
+
+export function jobNumberError(value: string): string | null {
+  if (isValidJobNumber(value)) return null;
+  return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
+}
+
 export function hasDuplicateJobNumber(
   jobs: CartJob[],
   id: string,
