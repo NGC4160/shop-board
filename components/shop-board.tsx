@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   NEXT_ACTION_PRESETS,
   PIPELINE_STATUSES,
@@ -55,8 +55,9 @@ const STATUS_CHIP: Record<StatusTone, string> = {
 };
 
 const OTHER_VALUE = "__other__";
+const HIT = "min-h-11 min-w-11";
 const inputClass =
-  "min-h-10 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground";
+  `${HIT} w-full rounded-md border border-border bg-background px-2 text-sm text-foreground`;
 
 export function ShopBoard() {
   const jobs = useSyncExternalStore(subscribeJobs, getJobsSnapshot, getServerJobsSnapshot);
@@ -121,7 +122,7 @@ export function ShopBoard() {
             <button
               type="button"
               onClick={addRow}
-              className="min-h-11 rounded-lg bg-accent px-5 text-base font-bold text-accent-ink"
+              className={`${HIT} rounded-lg bg-accent px-5 text-base font-bold text-accent-ink`}
             >
               Add row
             </button>
@@ -231,13 +232,7 @@ export function ShopBoard() {
                       value={job.status}
                       options={PIPELINE_STATUSES}
                       placeholder="Type a status"
-                      badge={
-                        <span
-                          className={`inline-flex min-h-6 items-center rounded-full px-2 text-xs font-bold ${STATUS_CHIP[statusTone(job.status)]}`}
-                        >
-                          {job.status || "—"}
-                        </span>
-                      }
+                      selectClassName={`font-semibold ${STATUS_CHIP[statusTone(job.status)]}`}
                       onChange={(status) => updateJob(job.id, { status })}
                     />
                   </td>
@@ -263,14 +258,14 @@ export function ShopBoard() {
                         <button
                           type="button"
                           onClick={() => deleteJob(job.id)}
-                          className="min-h-10 rounded-md bg-danger px-3 text-sm font-bold text-accent-ink"
+                          className={`${HIT} rounded-md bg-danger px-3 text-sm font-bold text-accent-ink`}
                         >
                           Confirm
                         </button>
                         <button
                           type="button"
                           onClick={() => setPendingDelete(null)}
-                          className="min-h-10 rounded-md border border-border px-3 text-sm font-semibold"
+                          className={`${HIT} rounded-md border border-border px-3 text-sm font-semibold`}
                         >
                           Keep
                         </button>
@@ -279,7 +274,7 @@ export function ShopBoard() {
                       <button
                         type="button"
                         onClick={() => setPendingDelete(job.id)}
-                        className="min-h-10 rounded-md border border-danger/50 px-3 text-sm font-semibold text-danger"
+                        className={`${HIT} rounded-md border border-danger/50 px-3 text-sm font-semibold text-danger`}
                       >
                         Delete
                       </button>
@@ -304,14 +299,14 @@ function ComboCell({
   onChange,
   emptyLabel,
   placeholder,
-  badge,
+  selectClassName,
 }: {
   value: string;
   options: readonly string[];
   onChange: (value: string) => void;
   emptyLabel?: string;
   placeholder?: string;
-  badge?: ReactNode;
+  selectClassName?: string;
 }) {
   const known =
     (emptyLabel !== undefined && value === "") || options.includes(value);
@@ -319,7 +314,6 @@ function ComboCell({
 
   return (
     <div className="flex min-w-44 flex-col gap-1">
-      {badge}
       <select
         aria-label="Choose a saved option"
         value={selectValue}
@@ -327,7 +321,7 @@ function ComboCell({
           if (event.target.value === OTHER_VALUE) return;
           onChange(event.target.value);
         }}
-        className={inputClass}
+        className={`${inputClass} ${selectClassName ?? ""}`}
       >
         {emptyLabel !== undefined ? <option value="">{emptyLabel}</option> : null}
         {options.map((option) => (
@@ -382,7 +376,7 @@ function SortHeader({
       type="button"
       onClick={() => onSort(column)}
       aria-pressed={active}
-      className={`inline-flex min-h-9 items-center gap-1 rounded px-1 text-left text-sm font-semibold hover:text-foreground ${
+      className={`inline-flex ${HIT} items-center gap-1 rounded px-2 text-left text-sm font-semibold hover:text-foreground ${
         active ? "text-accent" : "text-muted"
       }`}
     >
@@ -407,7 +401,7 @@ function StatusModeToggle({
       <button
         type="button"
         onClick={() => onStatusMode("pipeline")}
-        className={`min-h-8 rounded px-2 text-xs font-semibold ${
+        className={`${HIT} rounded px-3 text-sm font-semibold ${
           active && sort.statusMode === "pipeline"
             ? "bg-accent text-accent-ink"
             : "border border-border text-muted"
@@ -418,7 +412,7 @@ function StatusModeToggle({
       <button
         type="button"
         onClick={() => onStatusMode("alpha")}
-        className={`min-h-8 rounded px-2 text-xs font-semibold ${
+        className={`${HIT} rounded px-3 text-sm font-semibold ${
           active && sort.statusMode === "alpha"
             ? "bg-accent text-accent-ink"
             : "border border-border text-muted"
