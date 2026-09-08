@@ -1,14 +1,15 @@
-import { statusRank, type CartJob } from "@/lib/jobs";
-
-export const SORT_STORAGE_KEY = "ngc-shop-board-sort-v2";
+import { statusRank, type CartJob, cartLabel } from "@/lib/jobs";
 
 export const SORT_COLUMNS = [
   "customerName",
   "jobNumber",
+  "cart",
+  "bay",
   "primaryTech",
   "status",
   "nextAction",
   "timeExpectation",
+  "priority",
 ] as const;
 
 export type SortColumn = (typeof SORT_COLUMNS)[number];
@@ -36,6 +37,13 @@ const WEEKDAYS = [
   "friday",
   "saturday",
 ] as const;
+
+const PRIORITY_RANK: Record<string, number> = {
+  hot: 0,
+  promised: 1,
+  waiting: 2,
+  none: 3,
+};
 
 export function isSortColumn(value: string): value is SortColumn {
   return (SORT_COLUMNS as readonly string[]).includes(value);
@@ -112,6 +120,24 @@ export function parseTimeExpectation(text: string, now = Date.now()): number | n
   return Number.isNaN(fallback) ? null : fallback;
 }
 
+export function chicagoDayKey(ms: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+}
+
+export function isDueToday(job: CartJob, now = Date.now()): boolean {
+  const text = job.timeExpectation.trim().toLowerCase();
+  if (!text) return false;
+  if (/\btoday\b/.test(text) || /\bready now\b/.test(text)) return true;
+  const parsed = parseTimeExpectation(job.timeExpectation, now);
+  if (parsed === null) return false;
+  return chicagoDayKey(parsed) === chicagoDayKey(now);
+}
+
 export function compareJobs(a: CartJob, b: CartJob, sort: SortState): number {
   const direction = sort.direction === "asc" ? 1 : -1;
   let result = 0;
@@ -125,6 +151,12 @@ export function compareJobs(a: CartJob, b: CartJob, sort: SortState): number {
       result = numberDelta !== 0 ? numberDelta : compareText(a.jobNumber, b.jobNumber);
       break;
     }
+    case "cart":
+      result = compareText(cartLabel(a), cartLabel(b));
+      break;
+    case "bay":
+      result = compareText(a.bay || "\uFFFF", b.bay || "\uFFFF");
+      break;
     case "primaryTech":
       result = compareText(a.primaryTech || "\uFFFF", b.primaryTech || "\uFFFF");
       break;
@@ -136,6 +168,10 @@ export function compareJobs(a: CartJob, b: CartJob, sort: SortState): number {
       break;
     case "nextAction":
       result = compareText(a.nextAction, b.nextAction);
+      break;
+    case "priority":
+      result =
+        (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3);
       break;
     case "timeExpectation": {
       const aTime = parseTimeExpectation(a.timeExpectation);
@@ -185,7 +221,10 @@ export function toggleSort(current: SortState, column: SortColumn): SortState {
   return { column: "status", direction: "asc", statusMode: "pipeline" };
 }
 
-export function setStatusSortMode(current: SortState, statusMode: StatusSortMode): SortState {
+export function setStatusSortMode(
+  current: SortState,
+  statusMode: StatusSortMode,
+): SortState {
   if (current.column === "status" && current.statusMode === statusMode) {
     return {
       column: "status",
@@ -196,7 +235,7 @@ export function setStatusSortMode(current: SortState, statusMode: StatusSortMode
   return { column: "status", statusMode, direction: "asc" };
 }
 
-function isSortState(value: unknown): value is SortState {
+export function isSortState(value: unknown): value is SortState {
   if (!value || typeof value !== "object") return false;
   const sort = value as Record<string, unknown>;
   return (
@@ -205,52 +244,4 @@ function isSortState(value: unknown): value is SortState {
     (sort.direction === "asc" || sort.direction === "desc") &&
     (sort.statusMode === "pipeline" || sort.statusMode === "alpha")
   );
-}
-
-type StoreListener = () => void;
-
-const listeners = new Set<StoreListener>();
-let storeSort: SortState = defaultSort;
-let storeHydrated = false;
-
-function readSortFromStorage(): SortState {
-  try {
-    const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
-    if (!raw) return defaultSort;
-    const parsed = JSON.parse(raw) as unknown;
-    return isSortState(parsed) ? parsed : defaultSort;
-  } catch {
-    return defaultSort;
-  }
-}
-
-export function subscribeSort(onStoreChange: StoreListener): () => void {
-  listeners.add(onStoreChange);
-  if (!storeHydrated && typeof window !== "undefined") {
-    storeHydrated = true;
-    const next = readSortFromStorage();
-    queueMicrotask(() => {
-      storeSort = next;
-      listeners.forEach((listener) => listener());
-    });
-  }
-  return () => {
-    listeners.delete(onStoreChange);
-  };
-}
-
-export function getSortSnapshot(): SortState {
-  return storeSort;
-}
-
-export function getServerSortSnapshot(): SortState {
-  return defaultSort;
-}
-
-export function saveSort(sort: SortState): void {
-  storeSort = sort;
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sort));
-  }
-  listeners.forEach((listener) => listener());
 }
