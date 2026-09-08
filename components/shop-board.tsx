@@ -25,6 +25,7 @@ import {
   jobNumberError,
   normalizeJobNumber,
   saveJobs,
+  timeExpectationError,
   statusTone,
   subscribeJobs,
   type CartJob,
@@ -94,6 +95,12 @@ export function ShopBoard() {
       if (!isValidJobNumber(patch.jobNumber)) return;
       if (hasDuplicateJobNumber(jobs, id, patch.jobNumber)) return;
       patch = { ...patch, jobNumber: normalizeJobNumber(patch.jobNumber) };
+    }
+    if (
+      patch.timeExpectation !== undefined &&
+      timeExpectationError(patch.timeExpectation)
+    ) {
+      return;
     }
     persist(
       jobs.map((job) =>
@@ -199,6 +206,7 @@ export function ShopBoard() {
                   options={TIME_PRESETS}
                   placeholder="ETA / due / promised"
                   layout="row"
+                  errorFor={timeExpectationError}
                   onChange={(timeExpectation) => updateJob(job.id, { timeExpectation })}
                 />
                 <DeleteControl
@@ -319,6 +327,7 @@ export function ShopBoard() {
                       value={job.timeExpectation}
                       options={TIME_PRESETS}
                       placeholder="Time"
+                      errorFor={timeExpectationError}
                       onChange={(timeExpectation) => updateJob(job.id, { timeExpectation })}
                     />
                   </td>
@@ -469,6 +478,7 @@ function ComboCell({
   placeholder,
   selectClassName,
   layout = "stack",
+  errorFor,
 }: {
   value: string;
   options: readonly string[];
@@ -477,19 +487,21 @@ function ComboCell({
   placeholder?: string;
   selectClassName?: string;
   layout?: "stack" | "row";
+  errorFor?: (next: string) => string | null;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [pickedOther, setPickedOther] = useState(false);
+  const [textDraft, setTextDraft] = useState(value);
+  const [warning, setWarning] = useState("");
   const menuOptions = [
     ...(emptyLabel !== undefined ? [{ value: "", label: emptyLabel }] : []),
     ...options.map((option) => ({ value: option, label: option })),
     { value: OTHER_VALUE, label: "Other…" },
   ];
-  const isKnown =
-    (emptyLabel !== undefined && value === "") || options.includes(value);
+  const isKnown = value === "" || options.includes(value);
   const showText = !isKnown || pickedOther;
   const currentIndex = showText
     ? menuOptions.findIndex((option) => option.value === OTHER_VALUE)
@@ -508,10 +520,14 @@ function ComboCell({
     setOpen(false);
     if (next === OTHER_VALUE) {
       setPickedOther(true);
+      setTextDraft("");
+      setWarning("");
       queueMicrotask(() => textRef.current?.focus());
       return;
     }
     setPickedOther(false);
+    setWarning("");
+    setTextDraft(next);
     onChange(next);
   };
 
@@ -625,15 +641,25 @@ function ComboCell({
         <input
           ref={textRef}
           aria-label="Free text"
-          value={isKnown && pickedOther ? "" : value}
+          value={isKnown && pickedOther ? textDraft || "" : warning ? textDraft : value}
           onChange={(event) => {
+            const next = event.target.value;
             setPickedOther(true);
-            onChange(event.target.value);
+            setTextDraft(next);
+            const error = errorFor?.(next) ?? null;
+            if (error) {
+              setWarning(error);
+              return;
+            }
+            setWarning("");
+            onChange(next);
           }}
           placeholder={placeholder}
-          className={inputClass}
+          aria-invalid={Boolean(warning)}
+          className={`${inputClass} ${warning ? "border-danger" : ""}`}
         />
       ) : null}
+      {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
     </div>
   );
 }

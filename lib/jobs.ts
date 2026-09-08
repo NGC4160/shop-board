@@ -195,7 +195,24 @@ export function isPrimaryTech(name: string): name is PrimaryTech {
 }
 
 export function isClosedStatus(status: string): boolean {
-  return status === "Invoice Paid";
+  return status === "Invoice Paid" || status === "Completed";
+}
+
+/** Empty OK. Presets OK. Custom Other… phrases must be readable — no negatives or absurd junk. */
+export function timeExpectationError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if ((TIME_PRESETS as readonly string[]).includes(trimmed)) return null;
+  if (/^-/.test(trimmed) || /\b-\d/.test(trimmed)) {
+    return "Time can't be a negative or minus-only value";
+  }
+  if (/\b\d{3,}\s*days?\b/i.test(trimmed)) {
+    return "Time looks like junk — use a readable phrase";
+  }
+  if (/^[-.\s]+$/.test(trimmed)) {
+    return "Enter a readable time expectation";
+  }
+  return null;
 }
 
 export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
