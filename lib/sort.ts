@@ -1,32 +1,45 @@
-import { statusRank, type CartJob, cartLabel } from "@/lib/jobs";
+import { type CartJob } from "@/lib/jobs";
 
-export const SORT_COLUMNS = [
-  "customerName",
-  "jobNumber",
-  "cart",
-  "bay",
-  "primaryTech",
-  "status",
-  "nextAction",
-  "timeExpectation",
-  "priority",
-] as const;
+export function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+}
 
-export type SortColumn = (typeof SORT_COLUMNS)[number];
-export type SortDirection = "asc" | "desc";
-export type StatusSortMode = "pipeline" | "alpha";
-
-export type SortState = {
-  column: SortColumn;
-  direction: SortDirection;
-  statusMode: StatusSortMode;
+export type JobNumberParts = {
+  major: number;
+  minor: number;
+  raw: string;
 };
 
-export const defaultSort: SortState = {
-  column: "status",
-  direction: "asc",
-  statusMode: "pipeline",
-};
+/** Split `1842` / `17312-1` so 1842 sorts before 18510 and before 1842-1. */
+export function jobNumberParts(jobNumber: string): JobNumberParts {
+  const raw = jobNumber.trim();
+  const match = raw.match(/^(\d+)(?:-(\d+))?$/);
+  if (match) {
+    return {
+      major: Number(match[1]),
+      minor: match[2] ? Number(match[2]) : 0,
+      raw,
+    };
+  }
+  const digits = raw.replace(/\D/g, "");
+  return {
+    major: digits ? Number(digits) : Number.POSITIVE_INFINITY,
+    minor: 0,
+    raw,
+  };
+}
+
+export function jobNumberValue(jobNumber: string): number {
+  return jobNumberParts(jobNumber).major;
+}
+
+export function compareJobNumbers(a: string, b: string): number {
+  const left = jobNumberParts(a);
+  const right = jobNumberParts(b);
+  if (left.major !== right.major) return left.major - right.major;
+  if (left.minor !== right.minor) return left.minor - right.minor;
+  return compareText(left.raw, right.raw);
+}
 
 const WEEKDAYS = [
   "sunday",
@@ -37,27 +50,6 @@ const WEEKDAYS = [
   "friday",
   "saturday",
 ] as const;
-
-const PRIORITY_RANK: Record<string, number> = {
-  hot: 0,
-  promised: 1,
-  waiting: 2,
-  none: 3,
-};
-
-export function isSortColumn(value: string): value is SortColumn {
-  return (SORT_COLUMNS as readonly string[]).includes(value);
-}
-
-export function compareText(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
-}
-
-export function jobNumberValue(jobNumber: string): number {
-  const digits = jobNumber.replace(/\D/g, "");
-  if (!digits) return Number.POSITIVE_INFINITY;
-  return Number(digits);
-}
 
 export function parseTimeExpectation(text: string, now = Date.now()): number | null {
   const raw = text.trim().toLowerCase();
@@ -138,110 +130,18 @@ export function isDueToday(job: CartJob, now = Date.now()): boolean {
   return chicagoDayKey(parsed) === chicagoDayKey(now);
 }
 
-export function compareJobs(a: CartJob, b: CartJob, sort: SortState): number {
-  const direction = sort.direction === "asc" ? 1 : -1;
-  let result = 0;
-
-  switch (sort.column) {
-    case "customerName":
-      result = compareText(a.customerName, b.customerName);
-      break;
-    case "jobNumber": {
-      const numberDelta = jobNumberValue(a.jobNumber) - jobNumberValue(b.jobNumber);
-      result = numberDelta !== 0 ? numberDelta : compareText(a.jobNumber, b.jobNumber);
-      break;
-    }
-    case "cart":
-      result = compareText(cartLabel(a), cartLabel(b));
-      break;
-    case "bay":
-      result = compareText(a.bay || "\uFFFF", b.bay || "\uFFFF");
-      break;
-    case "primaryTech":
-      result = compareText(a.primaryTech || "\uFFFF", b.primaryTech || "\uFFFF");
-      break;
-    case "status":
-      result =
-        sort.statusMode === "alpha"
-          ? compareText(a.status, b.status)
-          : statusRank(a.status) - statusRank(b.status);
-      break;
-    case "nextAction":
-      result = compareText(a.nextAction, b.nextAction);
-      break;
-    case "priority":
-      result =
-        (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3);
-      break;
-    case "timeExpectation": {
-      const aTime = parseTimeExpectation(a.timeExpectation);
-      const bTime = parseTimeExpectation(b.timeExpectation);
-      if (aTime !== null && bTime !== null) result = aTime - bTime;
-      else if (aTime !== null) result = -1;
-      else if (bTime !== null) result = 1;
-      else result = compareText(a.timeExpectation, b.timeExpectation);
-      break;
-    }
-    default:
-      result = 0;
-  }
-
-  if (result !== 0) return result * direction;
+export function compareJobsByNumber(a: CartJob, b: CartJob): number {
+  const result = compareJobNumbers(a.jobNumber, b.jobNumber);
+  if (result !== 0) return result;
   return a.id.localeCompare(b.id);
 }
 
-export function sortJobsBy(jobs: CartJob[], sort: SortState): CartJob[] {
-  return [...jobs].sort((left, right) => compareJobs(left, right, sort));
+/** Board order is Housecall Pro job number only, lowest first. */
+export function sortJobsByJobNumber(jobs: CartJob[]): CartJob[] {
+  return [...jobs].sort(compareJobsByNumber);
 }
 
-export function toggleSort(current: SortState, column: SortColumn): SortState {
-  if (column !== "status") {
-    if (current.column === column) {
-      return {
-        ...current,
-        column,
-        direction: current.direction === "asc" ? "desc" : "asc",
-      };
-    }
-    return { ...current, column, direction: "asc" };
-  }
-
-  if (current.column !== "status") {
-    return { column: "status", direction: "asc", statusMode: "pipeline" };
-  }
-  if (current.statusMode === "pipeline" && current.direction === "asc") {
-    return { column: "status", direction: "desc", statusMode: "pipeline" };
-  }
-  if (current.statusMode === "pipeline" && current.direction === "desc") {
-    return { column: "status", direction: "asc", statusMode: "alpha" };
-  }
-  if (current.statusMode === "alpha" && current.direction === "asc") {
-    return { column: "status", direction: "desc", statusMode: "alpha" };
-  }
-  return { column: "status", direction: "asc", statusMode: "pipeline" };
-}
-
-export function setStatusSortMode(
-  current: SortState,
-  statusMode: StatusSortMode,
-): SortState {
-  if (current.column === "status" && current.statusMode === statusMode) {
-    return {
-      column: "status",
-      statusMode,
-      direction: current.direction === "asc" ? "desc" : "asc",
-    };
-  }
-  return { column: "status", statusMode, direction: "asc" };
-}
-
-export function isSortState(value: unknown): value is SortState {
-  if (!value || typeof value !== "object") return false;
-  const sort = value as Record<string, unknown>;
-  return (
-    typeof sort.column === "string" &&
-    isSortColumn(sort.column) &&
-    (sort.direction === "asc" || sort.direction === "desc") &&
-    (sort.statusMode === "pipeline" || sort.statusMode === "alpha")
-  );
+/** @deprecated Use sortJobsByJobNumber — the board no longer has multi-column sort. */
+export function sortJobsBy(jobs: CartJob[]): CartJob[] {
+  return sortJobsByJobNumber(jobs);
 }

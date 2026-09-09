@@ -27,18 +27,17 @@ import {
   importBoardJson,
   loadSampleBoard,
   savePrefs,
-  saveSort,
   subscribeBoard,
   undoDelete,
   updateJob,
 } from "@/lib/board-store";
 import { CHIP_FILTERS, CHIP_LABELS, boardStats, countChip, jobMatches, type ChipFilter } from "@/lib/filters";
-import { setStatusSortMode, sortJobsBy, toggleSort, type SortColumn, type StatusSortMode } from "@/lib/sort";
+import { sortJobsByJobNumber } from "@/lib/sort";
+import { startHcpMorningSync, type ClientHcpSyncResult } from "@/lib/hcp-client";
 import { CartMark } from "@/components/shop/cart-mark";
 import {
   BoardCards,
   BoardTable,
-  MobileSortBar,
   QueueBoard,
 } from "@/components/shop/board-table";
 import { JobDrawer } from "@/components/shop/job-drawer";
@@ -62,6 +61,23 @@ export function ShopApp() {
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let errorToasted = false;
+    return startHcpMorningSync((result: ClientHcpSyncResult) => {
+      if (result.skipped) return;
+      if (!result.ok) {
+        if (!errorToasted) {
+          errorToasted = true;
+          toast.error(result.error || "Housecall Pro sync failed");
+        }
+        return;
+      }
+      if (result.added || result.updated) {
+        toast(`Housecall Pro · ${result.added} new, ${result.updated} updated`);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -91,8 +107,8 @@ export function ShopApp() {
 
   const query = { search, tech, chip, hideClosed: board.prefs.hideClosed };
   const visible = useMemo(
-    () => sortJobsBy(board.jobs.filter((job) => jobMatches(job, query, now)), board.sort),
-    [board.jobs, board.sort, search, tech, chip, board.prefs.hideClosed, now],
+    () => sortJobsByJobNumber(board.jobs.filter((job) => jobMatches(job, query, now))),
+    [board.jobs, search, tech, chip, board.prefs.hideClosed, now],
   );
   const stats = useMemo(() => boardStats(board.jobs, now), [board.jobs, now]);
   const openJob = board.jobs.find((job) => job.id === openId) ?? null;
@@ -334,11 +350,9 @@ export function ShopApp() {
           NGC Shop Board · {formatClock(now)}
         </p>
         {board.prefs.view === "floor" ? (
-          <MobileSortBar
-            sort={board.sort}
-            onSort={(column: SortColumn) => saveSort(toggleSort(board.sort, column))}
-            onStatusMode={(mode: StatusSortMode) => saveSort(setStatusSortMode(board.sort, mode))}
-          />
+          <p className="mb-3 text-xs font-semibold tracking-wide text-muted uppercase md:hidden">
+            Sorted by job number
+          </p>
         ) : null}
 
         {visible.length === 0 ? (
@@ -367,9 +381,6 @@ export function ShopApp() {
             <BoardTable
               jobs={visible}
               allJobs={board.jobs}
-              sort={board.sort}
-              onSort={(column) => saveSort(toggleSort(board.sort, column))}
-              onStatusMode={(mode) => saveSort(setStatusSortMode(board.sort, mode))}
               onChange={onChange}
               onAdvance={onAdvance}
               onDelete={onDelete}

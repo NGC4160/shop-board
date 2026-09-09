@@ -12,6 +12,7 @@ import {
 import { CartMark } from "@/components/shop/cart-mark";
 import { formatClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { sortJobsByJobNumber } from "@/lib/sort";
 import { useEffect, useMemo, useState } from "react";
 
 const WALL_STATUSES = PIPELINE_STATUSES.filter(
@@ -33,7 +34,7 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
 
   const groups = WALL_STATUSES.map((status) => ({
     status,
-    jobs: openJobs.filter((job) => job.status === status),
+    jobs: sortJobsByJobNumber(openJobs.filter((job) => job.status === status)),
   })).filter((group) => group.jobs.length > 0);
 
   return (

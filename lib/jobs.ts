@@ -504,6 +504,14 @@ export function isClosedStatus(status: string): boolean {
   return status === "Invoice Paid" || status === "Completed";
 }
 
+const BARE_NUMBER = /^\d[\d,]*\.?\d*$/;
+const HUGE_DURATION = /\b\d{3,}\s*(days?|d|hrs?|hours?|weeks?|wks?|months?)\b/i;
+
+/**
+ * Empty and TIME_PRESETS are allowed.
+ * Other… custom text must be a readable shop phrase — not a bare number,
+ * a negative, or an absurd day/duration count like 999 / 999 days.
+ */
 export function timeExpectationError(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -511,7 +519,7 @@ export function timeExpectationError(value: string): string | null {
   if (/^-/.test(trimmed) || /\b-\d/.test(trimmed)) {
     return "Time can't be a negative or minus-only value";
   }
-  if (/\b\d{3,}\s*days?\b/i.test(trimmed)) {
+  if (BARE_NUMBER.test(trimmed) || HUGE_DURATION.test(trimmed)) {
     return "Time looks like junk — use a readable phrase";
   }
   if (/^[-.\s]+$/.test(trimmed)) {

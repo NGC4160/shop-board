@@ -20,11 +20,6 @@ import {
   timeExpectationError,
   type CartJob,
 } from "@/lib/jobs";
-import {
-  type SortColumn,
-  type SortState,
-  type StatusSortMode,
-} from "@/lib/sort";
 import { ComboCell } from "@/components/shop/combo-cell";
 import { agingLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -33,9 +28,6 @@ import { isDueToday } from "@/lib/sort";
 type BoardTableProps = {
   jobs: CartJob[];
   allJobs: CartJob[];
-  sort: SortState;
-  onSort: (column: SortColumn) => void;
-  onStatusMode: (mode: StatusSortMode) => void;
   onChange: (id: string, patch: Partial<CartJob>) => boolean;
   onAdvance: (id: string) => void;
   onDelete: (id: string) => void;
@@ -45,9 +37,6 @@ type BoardTableProps = {
 export function BoardTable({
   jobs,
   allJobs,
-  sort,
-  onSort,
-  onStatusMode,
   onChange,
   onAdvance,
   onDelete,
@@ -71,34 +60,32 @@ export function BoardTable({
         <thead className="bg-surface-2 text-sm">
           <tr>
             <th className="sticky left-0 z-20 border-r border-border bg-surface-2 px-1 py-1">
-              <div className="flex min-w-0 flex-col items-start gap-0.5">
-                <SortHeader column="customerName" label="Customer" sort={sort} onSort={onSort} />
-                <SortHeader column="jobNumber" label="Job #" sort={sort} onSort={onSort} />
+              <div className="flex min-w-0 flex-col items-start gap-0.5 px-2 py-1">
+                <span className="text-xs font-semibold tracking-wide text-muted uppercase">
+                  Customer
+                </span>
+                <span className="text-xs font-semibold tracking-wide text-foreground uppercase">
+                  Job #
+                </span>
               </div>
             </th>
             <th className="px-1 py-1">
-              <SortHeader column="cart" label="Cart" sort={sort} onSort={onSort} />
+              <ColumnLabel>Cart</ColumnLabel>
             </th>
             <th className="px-1 py-1">
-              <SortHeader column="bay" label="Bay" sort={sort} onSort={onSort} />
+              <ColumnLabel>Bay</ColumnLabel>
             </th>
             <th className="px-1 py-1">
-              <SortHeader column="primaryTech" label="Tech" sort={sort} onSort={onSort} />
+              <ColumnLabel>Tech</ColumnLabel>
             </th>
             <th className="px-1 py-1">
-              <div className="flex min-w-0 flex-col items-start gap-1">
-                <SortHeader column="status" label="Status" sort={sort} onSort={onSort} />
-                <StatusModeToggle
-                  sort={sort}
-                  onStatusMode={(mode) => onStatusMode(mode)}
-                />
-              </div>
+              <ColumnLabel>Status</ColumnLabel>
             </th>
             <th className="px-1 py-1">
-              <SortHeader column="nextAction" label="Next" sort={sort} onSort={onSort} />
+              <ColumnLabel>Next</ColumnLabel>
             </th>
             <th className="px-1 py-1">
-              <SortHeader column="timeExpectation" label="Time" sort={sort} onSort={onSort} />
+              <ColumnLabel>Time</ColumnLabel>
             </th>
             <th className="sticky right-0 z-20 bg-surface-2 px-1 py-1">
               <span className="sr-only">Actions</span>
@@ -261,7 +248,7 @@ export function BoardCards({
   onAdvance,
   onDelete,
   onOpen,
-}: Omit<BoardTableProps, "sort" | "onSort" | "onStatusMode">) {
+}: BoardTableProps) {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   return (
@@ -434,6 +421,14 @@ function FieldLabel({ children }: { children: string }) {
   return <p className="text-xs font-semibold tracking-wide text-muted uppercase">{children}</p>;
 }
 
+function ColumnLabel({ children }: { children: string }) {
+  return (
+    <span className="inline-flex h-9 items-center px-2 text-xs font-semibold tracking-wide text-muted uppercase">
+      {children}
+    </span>
+  );
+}
+
 function flagBar(priority: CartJob["priority"]) {
   if (priority === "hot") return "shadow-[inset_3px_0_0_0_var(--color-flag-hot)]";
   if (priority === "promised") return "shadow-[inset_3px_0_0_0_var(--color-flag-promised)]";
@@ -515,95 +510,6 @@ function IdentityFields({
         )}
       />
       {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
-    </div>
-  );
-}
-
-function SortHeader({
-  column,
-  label,
-  sort,
-  onSort,
-}: {
-  column: SortColumn;
-  label: string;
-  sort: SortState;
-  onSort: (column: SortColumn) => void;
-}) {
-  const active = sort.column === column;
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(column)}
-      className={cn(
-        "inline-flex h-9 items-center rounded-sm px-2 text-xs font-semibold tracking-wide uppercase",
-        active ? "text-foreground" : "text-muted",
-      )}
-    >
-      {label}
-      {active ? (sort.direction === "asc" ? " ▲" : " ▼") : ""}
-    </button>
-  );
-}
-
-function StatusModeToggle({
-  sort,
-  onStatusMode,
-}: {
-  sort: SortState;
-  onStatusMode: (mode: StatusSortMode) => void;
-}) {
-  return (
-    <div className="flex gap-1 px-1">
-      <button
-        type="button"
-        onClick={() => onStatusMode("pipeline")}
-        className={cn(
-          "h-7 rounded-sm px-2 text-[11px] font-semibold uppercase",
-          sort.column === "status" && sort.statusMode === "pipeline"
-            ? "bg-surface-3 text-foreground"
-            : "text-subtle",
-        )}
-      >
-        Pipeline
-      </button>
-      <button
-        type="button"
-        onClick={() => onStatusMode("alpha")}
-        className={cn(
-          "h-7 rounded-sm px-2 text-[11px] font-semibold uppercase",
-          sort.column === "status" && sort.statusMode === "alpha"
-            ? "bg-surface-3 text-foreground"
-            : "text-subtle",
-        )}
-      >
-        A–Z
-      </button>
-    </div>
-  );
-}
-
-export function MobileSortBar({
-  sort,
-  onSort,
-  onStatusMode,
-}: {
-  sort: SortState;
-  onSort: (column: SortColumn) => void;
-  onStatusMode: (mode: StatusSortMode) => void;
-}) {
-  return (
-    <div className="mb-3 flex flex-col gap-2 md:hidden">
-      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Sort</p>
-      <div className="flex flex-wrap items-center gap-1">
-        <SortHeader column="customerName" label="Customer" sort={sort} onSort={onSort} />
-        <SortHeader column="jobNumber" label="Job #" sort={sort} onSort={onSort} />
-        <SortHeader column="primaryTech" label="Tech" sort={sort} onSort={onSort} />
-        <SortHeader column="status" label="Status" sort={sort} onSort={onSort} />
-        <SortHeader column="nextAction" label="Next" sort={sort} onSort={onSort} />
-        <SortHeader column="timeExpectation" label="Time" sort={sort} onSort={onSort} />
-        <StatusModeToggle sort={sort} onStatusMode={onStatusMode} />
-      </div>
     </div>
   );
 }
