@@ -122,3 +122,134 @@
 .print-only {
   display: none;
 }
+
+@layer components {
+  .shop-shell {
+    height: 100dvh;
+    overflow: hidden;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .board-scroll {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .board-sheet {
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: max(100%, 70.25rem);
+  }
+
+  .board-col-id {
+    width: 10rem;
+  }
+
+  .board-col-cart {
+    width: 10.5rem;
+  }
+
+  .board-col-bay {
+    width: 6.5rem;
+  }
+
+  .board-col-tech {
+    width: 9rem;
+  }
+
+  .board-col-status {
+    width: 11.5rem;
+  }
+
+  .board-col-next {
+    width: 10.5rem;
+  }
+
+  .board-col-time {
+    width: 9rem;
+  }
+
+  .board-col-actions {
+    width: 3.25rem;
+  }
+
+  .board-sticky-id {
+    position: sticky;
+    left: 0;
+    background: var(--color-surface);
+    box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
+  }
+
+  .board-sticky-id-head {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 30;
+    background: var(--color-surface-2);
+    box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
+  }
+
+  .board-sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--color-surface-2);
+  }
+
+  .board-sticky-actions {
+    position: sticky;
+    right: 0;
+    background: var(--color-surface);
+    box-shadow: -6px 0 10px -8px rgba(0, 0, 0, 0.8);
+  }
+
+  .board-sticky-actions-head {
+    position: sticky;
+    top: 0;
+    right: 0;
+    z-index: 30;
+    background: var(--color-surface-2);
+    box-shadow: -6px 0 10px -8px rgba(0, 0, 0, 0.8);
+  }
+
+  @media (min-width: 768px) {
+    .board-col-id {
+      width: 12rem;
+    }
+  }
+}
+
+@media print {
+  .shop-shell {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .board-scroll {
+    overflow: visible !important;
+  }
+
+  .board-sheet,
+  .board-col-id,
+  .board-col-cart,
+  .board-col-bay,
+  .board-col-tech,
+  .board-col-status,
+  .board-col-next,
+  .board-col-time,
+  .board-col-actions {
+    width: auto !important;
+  }
+
+  .board-sticky-id,
+  .board-sticky-id-head,
+  .board-sticky-head,
+  .board-sticky-actions,
+  .board-sticky-actions-head {
+    position: static !important;
+    box-shadow: none !important;
+  }
+}

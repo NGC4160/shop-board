@@ -7,6 +7,7 @@ import {
   loadSampleBoard,
 } from "./board-store.ts";
 import { boardStats } from "./filters.ts";
+import { isBlankIdentity } from "./jobs.ts";
 
 describe("Add cart ghost", () => {
   it("does not persist a blank draft or bump Open", () => {
@@ -20,6 +21,18 @@ describe("Add cart ghost", () => {
     assert.equal(boardStats(getBoardSnapshot().jobs).open, openBefore);
     assert.equal(insertJob(draft), false);
     assert.equal(getBoardSnapshot().jobs.length, before);
+    assert.equal(boardStats(getBoardSnapshot().jobs).open, openBefore);
+  });
+
+  it("blank identity is abandoned without counting as a board row", () => {
+    loadSampleBoard();
+    const openBefore = boardStats(getBoardSnapshot().jobs).open;
+    const draft = createDraftJob();
+    assert.equal(isBlankIdentity(draft), true);
+    assert.equal(
+      getBoardSnapshot().jobs.some((job) => job.id === draft.id),
+      false,
+    );
     assert.equal(boardStats(getBoardSnapshot().jobs).open, openBefore);
   });
 
