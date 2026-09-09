@@ -18,11 +18,8 @@ import {
 import { mergeHcpJobs } from "@/lib/hcp-merge";
 import type { HcpOpenJob } from "@/lib/hcp";
 
-export type BoardView = "floor" | "queue";
-
 export type BoardPrefs = {
   hideClosed: boolean;
-  view: BoardView;
 };
 
 export type BoardSnapshot = {
@@ -33,7 +30,6 @@ export type BoardSnapshot = {
 
 const defaultPrefs: BoardPrefs = {
   hideClosed: true,
-  view: "floor",
 };
 
 type StoreListener = () => void;
@@ -87,13 +83,6 @@ function readFromStorage(): BoardSnapshot {
               typeof (record.prefs as BoardPrefs).hideClosed === "boolean"
                 ? (record.prefs as BoardPrefs).hideClosed
                 : true,
-            view:
-              typeof record.prefs === "object" &&
-              record.prefs !== null &&
-              ((record.prefs as BoardPrefs).view === "queue" ||
-                (record.prefs as BoardPrefs).view === "floor")
-                ? (record.prefs as BoardPrefs).view
-                : "floor",
           },
           lastHcpSyncAt:
             typeof record.lastHcpSyncAt === "number" ? record.lastHcpSyncAt : null,

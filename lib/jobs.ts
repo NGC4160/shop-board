@@ -75,6 +75,21 @@ export const CART_MAKES = [
   "Advanced EV",
 ] as const;
 
+export const CART_COLORS = [
+  "White",
+  "Black",
+  "Red",
+  "Blue",
+  "Green",
+  "Tan",
+  "Beige",
+  "Silver",
+  "Platinum",
+  "Burgundy",
+  "Gray",
+  "Orange",
+] as const;
+
 export const BAYS = [
   "Bay 1",
   "Bay 2",
@@ -90,6 +105,18 @@ export const BAYS = [
 
 export const PRIORITIES = ["none", "hot", "promised", "waiting"] as const;
 export type Priority = (typeof PRIORITIES)[number];
+
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  none: "No flag",
+  hot: "Hot",
+  promised: "Promised",
+  waiting: "Waiting",
+};
+
+export function nextPriority(priority: Priority): Priority {
+  const index = PRIORITIES.indexOf(priority);
+  return PRIORITIES[(index + 1) % PRIORITIES.length] ?? "none";
+}
 
 export type HistoryKind = "created" | "status" | "tech" | "note" | "edit";
 

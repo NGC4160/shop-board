@@ -35,11 +35,7 @@ import { CHIP_FILTERS, CHIP_LABELS, boardStats, countChip, jobMatches, type Chip
 import { sortJobsByJobNumber } from "@/lib/sort";
 import { startHcpMorningSync, type ClientHcpSyncResult } from "@/lib/hcp-client";
 import { CartMark } from "@/components/shop/cart-mark";
-import {
-  BoardCards,
-  BoardTable,
-  QueueBoard,
-} from "@/components/shop/board-table";
+import { BoardCards, BoardTable } from "@/components/shop/board-table";
 import { JobDrawer } from "@/components/shop/job-drawer";
 import { formatClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -95,8 +91,7 @@ export function ShopApp() {
       }
       if ((event.key === "n" || event.key === "N") && !typing && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
-        const id = addRow();
-        setOpenId(id);
+        addRow();
         toast("Blank row added");
       }
       if (event.key === "Escape") setOpenId(null);
@@ -105,9 +100,13 @@ export function ShopApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const query = { search, tech, chip, hideClosed: board.prefs.hideClosed };
   const visible = useMemo(
-    () => sortJobsByJobNumber(board.jobs.filter((job) => jobMatches(job, query, now))),
+    () =>
+      sortJobsByJobNumber(
+        board.jobs.filter((job) =>
+          jobMatches(job, { search, tech, chip, hideClosed: board.prefs.hideClosed }, now),
+        ),
+      ),
     [board.jobs, search, tech, chip, board.prefs.hideClosed, now],
   );
   const stats = useMemo(() => boardStats(board.jobs, now), [board.jobs, now]);
@@ -183,8 +182,7 @@ export function ShopApp() {
             <button
               type="button"
               onClick={() => {
-                const id = addRow();
-                setOpenId(id);
+                addRow();
                 toast("Blank row added");
               }}
               className="inline-flex h-11 items-center gap-2 rounded-sm bg-accent px-4 text-sm font-semibold text-accent-ink"
@@ -289,28 +287,6 @@ export function ShopApp() {
                 </option>
               ))}
             </select>
-            <div className="flex rounded-sm border border-border p-0.5">
-              <button
-                type="button"
-                onClick={() => savePrefs({ view: "floor" })}
-                className={cn(
-                  "h-10 rounded-[6px] px-3 text-sm font-medium",
-                  board.prefs.view === "floor" ? "bg-surface-3" : "text-muted",
-                )}
-              >
-                Floor
-              </button>
-              <button
-                type="button"
-                onClick={() => savePrefs({ view: "queue" })}
-                className={cn(
-                  "h-10 rounded-[6px] px-3 text-sm font-medium",
-                  board.prefs.view === "queue" ? "bg-surface-3" : "text-muted",
-                )}
-              >
-                Queue
-              </button>
-            </div>
             <label className="inline-flex h-11 items-center gap-2 rounded-sm border border-border px-3 text-sm">
               <input
                 type="checkbox"
@@ -349,11 +325,9 @@ export function ShopApp() {
         <p className="print-only mb-3 font-display text-2xl font-semibold">
           NGC Shop Board · {formatClock(now)}
         </p>
-        {board.prefs.view === "floor" ? (
-          <p className="mb-3 text-xs font-semibold tracking-wide text-muted uppercase md:hidden">
-            Sorted by job number
-          </p>
-        ) : null}
+        <p className="mb-3 text-xs font-semibold tracking-wide text-muted uppercase">
+          Spreadsheet · sorted by job number
+        </p>
 
         {visible.length === 0 ? (
           <div className="rounded-lg border border-border bg-surface px-6 py-16 text-center">
@@ -364,18 +338,6 @@ export function ShopApp() {
                 : "Clear the search or pick another filter."}
             </p>
           </div>
-        ) : board.prefs.view === "queue" ? (
-          <>
-            <QueueBoard jobs={visible} onOpen={setOpenId} />
-            <BoardCards
-              jobs={visible}
-              allJobs={board.jobs}
-              onChange={onChange}
-              onAdvance={onAdvance}
-              onDelete={onDelete}
-              onOpen={setOpenId}
-            />
-          </>
         ) : (
           <>
             <BoardTable

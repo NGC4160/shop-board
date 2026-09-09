@@ -33,8 +33,15 @@ export function ComboCell({
   const [open, setOpen] = useState(false);
   const [pickedOther, setPickedOther] = useState(false);
   const [textDraft, setTextDraft] = useState(value);
+  const [seenValue, setSeenValue] = useState(value);
   const [query, setQuery] = useState("");
   const [warning, setWarning] = useState("");
+
+  if (value !== seenValue) {
+    setSeenValue(value);
+    setTextDraft(value);
+    if (options.includes(value) || value === "") setPickedOther(false);
+  }
 
   const isKnown = value === "" || options.includes(value);
   const showText = !isKnown || pickedOther;
@@ -57,11 +64,6 @@ export function ComboCell({
     ),
   );
   const [highlight, setHighlight] = useState(currentIndex);
-
-  useEffect(() => {
-    setTextDraft(value);
-    if (options.includes(value) || value === "") setPickedOther(false);
-  }, [value, options]);
 
   useEffect(() => {
     if (!open) return;

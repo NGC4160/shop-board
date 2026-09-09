@@ -8,24 +8,22 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 ## What it does
 
-Spreadsheet on one page — every field still edits inline. No required edit modal.
+This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 
-On top of that v2 adds a real shop-floor command center:
+One dense table on one page. Rows are carts. Columns are fields. Every floor field edits **inline** — customer, job #, flag, year / make / model / color, bay, tech, status, next action, time. No required edit modal. Add cart inserts a blank line on this page.
 
 - **Stats strip:** open, hot, due today, parts, unassigned, stuck 3+ days
 - **Search** plus filters by tech, hot, due, parts, pickup, stale, closed
-- **Cart details:** year / make / model / color, bay, phone, notes, activity log
-- **Flags:** Hot, Promised, Waiting — left bar on the row
+- **Flags:** Hot / Promised / Waiting — tap the flag on the row, plus a left color bar
 - **Aging:** days in the current Housecall Pro stage
 - **Advance:** one tap moves the job to the next pipeline status
-- **Queue view:** jobs grouped by Housecall Pro stage (bottlenecks, not a kanban)
-- **Wall display** at `/wall` for the shop TV
+- **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
 - **Export / import JSON**, print, undo delete
-- **Keyboard:** `N` add cart, `/` search, `Esc` close details
+- **Keyboard:** `N` add cart, `/` search, `Esc` close notes
 
-Tablet uses compact cards. Add cart inserts a blank line. Details open in a side drawer — the main grid stays inline.
+Tablet keeps the compact table (horizontal scroll). Phone uses stacked inline-edit rows — still a spreadsheet, not cards-as-kanban. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
 
-Primary tech, Status, Next action, Time, Bay, and Make each have a **dropdown of known options plus a free-text box**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
+Primary tech, Status, Next action, Time, Bay, Make, and Color each have a **dropdown of known options plus Other… free text**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 
 Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status / next / time, and no Pipeline / A–Z status sort toggles. Status still edits inline.
 

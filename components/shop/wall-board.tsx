@@ -56,7 +56,7 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
           <p className="text-sm text-muted">
             {openJobs.length} open carts ·{" "}
             <Link href="/" className="text-accent underline-offset-2 hover:underline">
-              Floor view
+              Spreadsheet
             </Link>
           </p>
         </div>
