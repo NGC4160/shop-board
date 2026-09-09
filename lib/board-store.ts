@@ -1,6 +1,5 @@
 import {
   LEGACY_JOBS_KEY,
-  LEGACY_SORT_KEY,
   STORAGE_KEY,
   appendHistory,
   createId,
@@ -16,11 +15,8 @@ import {
   type CartJob,
   type Priority,
 } from "@/lib/jobs";
-import {
-  defaultSort,
-  isSortState,
-  type SortState,
-} from "@/lib/sort";
+import { mergeHcpJobs } from "@/lib/hcp-merge";
+import type { HcpOpenJob } from "@/lib/hcp";
 
 export type BoardView = "floor" | "queue";
 
@@ -31,8 +27,8 @@ export type BoardPrefs = {
 
 export type BoardSnapshot = {
   jobs: CartJob[];
-  sort: SortState;
   prefs: BoardPrefs;
+  lastHcpSyncAt: number | null;
 };
 
 const defaultPrefs: BoardPrefs = {
@@ -45,8 +41,8 @@ type StoreListener = () => void;
 const listeners = new Set<StoreListener>();
 let snapshot: BoardSnapshot = {
   jobs: seedJobs,
-  sort: defaultSort,
   prefs: defaultPrefs,
+  lastHcpSyncAt: null,
 };
 let hydrated = false;
 let undoStack: CartJob[] | null = null;
@@ -84,7 +80,6 @@ function readFromStorage(): BoardSnapshot {
           : [];
         return {
           jobs: jobs.length > 0 ? jobs : seedJobs,
-          sort: isSortState(record.sort) ? record.sort : defaultSort,
           prefs: {
             hideClosed:
               typeof record.prefs === "object" &&
@@ -100,29 +95,21 @@ function readFromStorage(): BoardSnapshot {
                 ? (record.prefs as BoardPrefs).view
                 : "floor",
           },
+          lastHcpSyncAt:
+            typeof record.lastHcpSyncAt === "number" ? record.lastHcpSyncAt : null,
         };
       }
     }
     const legacyJobs = parseLegacyJobs(window.localStorage.getItem(LEGACY_JOBS_KEY));
-    let sort = defaultSort;
-    const legacySort = window.localStorage.getItem(LEGACY_SORT_KEY);
-    if (legacySort) {
-      try {
-        const parsed = JSON.parse(legacySort) as unknown;
-        if (isSortState(parsed)) sort = parsed;
-      } catch {
-        sort = defaultSort;
-      }
-    }
     const next: BoardSnapshot = {
       jobs: legacyJobs ?? seedJobs,
-      sort,
       prefs: defaultPrefs,
+      lastHcpSyncAt: null,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     return next;
   } catch {
-    return { jobs: seedJobs, sort: defaultSort, prefs: defaultPrefs };
+    return { jobs: seedJobs, prefs: defaultPrefs, lastHcpSyncAt: null };
   }
 }
 
@@ -146,7 +133,7 @@ export function getBoardSnapshot(): BoardSnapshot {
 }
 
 export function getServerBoardSnapshot(): BoardSnapshot {
-  return { jobs: seedJobs, sort: defaultSort, prefs: defaultPrefs };
+  return { jobs: seedJobs, prefs: defaultPrefs, lastHcpSyncAt: null };
 }
 
 function commit(next: BoardSnapshot, remember = false) {
@@ -158,10 +145,6 @@ function commit(next: BoardSnapshot, remember = false) {
 
 export function saveJobs(jobs: CartJob[], remember = true) {
   commit({ ...snapshot, jobs }, remember);
-}
-
-export function saveSort(sort: SortState) {
-  commit({ ...snapshot, sort }, false);
 }
 
 export function savePrefs(prefs: Partial<BoardPrefs>) {
@@ -307,4 +290,17 @@ export function importBoardJson(raw: string): { ok: true; count: number } | { ok
 
 export function setPriority(id: string, priority: Priority) {
   updateJob(id, { priority });
+}
+
+export function applyHcpJobs(incoming: HcpOpenJob[]): { added: number; updated: number } {
+  const { jobs, added, updated } = mergeHcpJobs(snapshot.jobs, incoming);
+  commit(
+    {
+      ...snapshot,
+      jobs,
+      lastHcpSyncAt: Date.now(),
+    },
+    true,
+  );
+  return { added, updated };
 }

@@ -27,7 +27,7 @@ Tablet uses compact cards. Add cart inserts a blank line. Details open in a side
 
 Primary tech, Status, Next action, Time, Bay, and Make each have a **dropdown of known options plus a free-text box**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 
-Click a column header to sort. Click again to flip A–Z / Z–A. The last sort is remembered in the browser.
+Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status / next / time, and no Pipeline / A–Z status sort toggles. Status still edits inline.
 
 ## Primary tech
 
@@ -71,6 +71,34 @@ Status is a dropdown of the live NGC Housecall Pro **Jobs** pipeline stages (Pip
 26. Invoice Paid
 
 v2 stores data in the browser (`localStorage` key `ngc-shop-board-v6`). First load seeds example carts so the board is not empty. Existing v5 boards migrate automatically. No login.
+
+## Housecall Pro morning sync (7:00 AM America/Chicago)
+
+Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handler only runs the Housecall Pro pull when the clock is **7:00 AM in America/Chicago**, so daylight saving does not drift the shop’s 7am refresh.
+
+Each shop tablet/TV then merges that job list into the local board:
+
+- After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
+- Housecall Pro updates **job list, customer, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**.
+- Tech-entered **next action, time expectation, notes, bay, cart, flags, and assigned tech** are kept.
+- Local-only rows (blank add-cart lines, jobs not in the HCP open list) stay on the board.
+
+The public Jobs API’s `work_status` is coarse (`unscheduled` / `scheduled` / `in progress`). Custom pipeline columns such as “Awaiting QC” are applied only when HCP returns that exact name (tag or `pipeline_status`). Otherwise existing shop statuses are left alone; new jobs fall back to Unscheduled / Scheduled / In Progress.
+
+### Required Vercel environment variables
+
+Set these on the **ngc-shop-board** project (Production). See `.env.example`.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
+| `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
+
+Optional: `HOUSECALL_PRO_AUTH_SCHEME=bearer` if the key is a Bearer token instead of `Token <key>`; `HOUSECALL_PRO_COMPANY_ID` for multi-location; `HOUSECALL_PRO_API_URL` (defaults to `https://api.housecallpro.com`).
+
+Without `HOUSECALL_PRO_API_KEY`, job-number sort still ships, and the 7am cron/route still runs as a stub that reports the missing token. Live HCP job refresh is blocked until the key is set.
+
+Generate the key in Housecall Pro (MAX plan, Admin user): **My Apps → API Key Management → Generate API Key**.
 
 ## Local run
 

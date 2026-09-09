@@ -1,11 +1,12 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   getBoardSnapshot,
   getServerBoardSnapshot,
   subscribeBoard,
 } from "@/lib/board-store";
+import { startHcpMorningSync } from "@/lib/hcp-client";
 import { WallBoard } from "@/components/shop/wall-board";
 
 export default function Wall() {
@@ -14,5 +15,8 @@ export default function Wall() {
     getBoardSnapshot,
     getServerBoardSnapshot,
   );
+
+  useEffect(() => startHcpMorningSync(), []);
+
   return <WallBoard jobs={board.jobs} />;
 }
