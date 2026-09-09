@@ -535,6 +535,15 @@ export function isBlankIdentity(job: Pick<CartJob, "customerName" | "jobNumber">
   return !job.customerName.trim() && !normalizeJobNumber(job.jobNumber);
 }
 
+/** Live Add cart persisted empty/untitled rows. Drop them on load so they never bump Open. */
+export function isGhostJob(job: Pick<CartJob, "customerName" | "jobNumber">): boolean {
+  if (isBlankIdentity(job)) return true;
+  const name = job.customerName.trim();
+  const untitled = /^untitled(\s+cart)?$/i.test(name);
+  if ((!name || untitled) && jobNumberError(job.jobNumber)) return true;
+  return false;
+}
+
 export function hasDuplicateJobNumber(
   jobs: CartJob[],
   id: string,
@@ -923,4 +932,10 @@ export function upgradeJob(value: unknown): CartJob | null {
       now,
     ),
   };
+}
+
+export function sanitizeLoadedJobs(values: unknown[]): CartJob[] {
+  return values
+    .map(upgradeJob)
+    .filter((job): job is CartJob => job !== null && !isGhostJob(job));
 }

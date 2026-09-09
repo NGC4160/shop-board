@@ -7,13 +7,12 @@ import {
   emptyDraft,
   customerNameError,
   hasDuplicateJobNumber,
-  isBlankIdentity,
+  sanitizeLoadedJobs,
   jobNumberError,
   nextPipelineStatus,
   normalizeJobNumber,
   seedJobs,
   timeExpectationError,
-  upgradeJob,
   type CartJob,
   type Priority,
 } from "@/lib/jobs";
@@ -59,7 +58,7 @@ function parseLegacyJobs(raw: string | null): CartJob[] | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return null;
-    const jobs = parsed.map(upgradeJob).filter((job): job is CartJob => job !== null && !isBlankIdentity(job));
+    const jobs = sanitizeLoadedJobs(parsed);
     return jobs.length > 0 ? jobs : null;
   } catch {
     return null;
@@ -73,12 +72,7 @@ function readFromStorage(): BoardSnapshot {
       const parsed = JSON.parse(raw) as unknown;
       if (parsed && typeof parsed === "object") {
         const record = parsed as Record<string, unknown>;
-        const jobs = Array.isArray(record.jobs)
-          ? record.jobs
-              .map(upgradeJob)
-              .filter((job): job is CartJob => job !== null)
-              .filter((job) => !isBlankIdentity(job))
-          : [];
+        const jobs = Array.isArray(record.jobs) ? sanitizeLoadedJobs(record.jobs) : [];
         return {
           jobs: jobs.length > 0 ? jobs : seedJobs,
           prefs: {
@@ -114,6 +108,7 @@ export function subscribeBoard(onStoreChange: StoreListener): () => void {
     const next = readFromStorage();
     queueMicrotask(() => {
       snapshot = next;
+      persist();
       emit();
     });
   }
@@ -287,9 +282,7 @@ export function importBoardJson(raw: string): { ok: true; count: number } | { ok
         ? (parsed as { jobs: unknown[] }).jobs
         : null;
     if (!list) return { ok: false, error: "File does not look like a shop board export" };
-    const jobs = list
-      .map(upgradeJob)
-      .filter((job): job is CartJob => job !== null && !isBlankIdentity(job));
+    const jobs = sanitizeLoadedJobs(list);
     if (jobs.length === 0) return { ok: false, error: "No carts found in that file" };
     replaceBoard(jobs);
     return { ok: true, count: jobs.length };

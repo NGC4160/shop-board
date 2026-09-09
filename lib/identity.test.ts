@@ -5,12 +5,14 @@ import {
   customerNameError,
   hasDuplicateJobNumber,
   isBlankIdentity,
+  isGhostJob,
   isValidJobNumber,
   jobNumberError,
   jobNumberWarning,
   listedOtherError,
   normalizeJobNumber,
   PIPELINE_STATUSES,
+  sanitizeLoadedJobs,
   seedJobs,
 } from "./jobs.ts";
 
@@ -67,6 +69,23 @@ describe("identity required", () => {
     assert.equal(isBlankIdentity({ customerName: "  ", jobNumber: "  " }), true);
     assert.equal(isBlankIdentity({ customerName: "Amy", jobNumber: "" }), false);
     assert.equal(isBlankIdentity({ customerName: "", jobNumber: "1842" }), false);
+  });
+
+  it("treats live Add-cart untitled rows as ghosts", () => {
+    assert.equal(isGhostJob({ customerName: "", jobNumber: "" }), true);
+    assert.equal(isGhostJob({ customerName: "Untitled cart", jobNumber: "" }), true);
+    assert.equal(isGhostJob({ customerName: "", jobNumber: "000" }), true);
+    assert.equal(isGhostJob({ customerName: "Sharon Badeaux", jobNumber: "1847" }), false);
+  });
+
+  it("drops ghost rows and keeps real carts when loading stored jobs", () => {
+    const loaded = sanitizeLoadedJobs([
+      { ...seedJobs[1], customerName: "", jobNumber: "", id: "ghost-1" },
+      { ...seedJobs[1], statusChangedAt: 0, createdAt: 0 },
+      { id: "nope" },
+    ]);
+    assert.equal(loaded.some((job) => job.id === "ghost-1"), false);
+    assert.equal(loaded.some((job) => job.jobNumber === "1847"), true);
   });
 
   it("blocks Other… values that match a listed pipeline stage", () => {

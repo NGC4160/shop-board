@@ -57,6 +57,20 @@ describe("daysInStatus", () => {
     });
     assert.ok(upgraded);
     assert.ok(daysInStatus(upgraded, now) <= 365);
-    assert.notEqual(agingLabel(daysInStatus(upgraded, now)), "20705d in stage");
+    assert.doesNotMatch(agingLabel(daysInStatus(upgraded, now)), /\d{4,}d/);
+  });
+
+  it("Sharon-style stored epoch never displays 20705d in stage", () => {
+    const now = Date.parse("2026-09-09T12:00:00Z");
+    const sharon = {
+      ...seedJobs[1],
+      jobNumber: "1847",
+      status: "Waiting on Materials",
+      statusChangedAt: 0,
+      createdAt: 0,
+    };
+    const label = agingLabel(daysInStatus(sharon, now));
+    assert.doesNotMatch(label, /\d{4,}d/);
+    assert.notEqual(label, "20705d in stage");
   });
 });
