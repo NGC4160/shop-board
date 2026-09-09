@@ -21,7 +21,9 @@ One dense table on one page. Rows are carts. Columns are fields. Every floor fie
 - **Export / import JSON**, print, undo delete
 - **Keyboard:** `N` add cart, `/` search, `Esc` close notes
 
-Tablet keeps the compact table (horizontal scroll). Phone uses stacked inline-edit rows — still a spreadsheet, not cards-as-kanban. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
+Tablet and phone keep the same table (horizontal scroll). Customer name and job # stay in the sticky left column; every other field is to the right. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
+
+Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers still must be digits or `17312-1`, and duplicates are blocked. Add cart inserts a blank line that is not stored until both identity fields are filled.
 
 Primary tech, Status, Next action, Time, Bay, Make, and Color each have a **dropdown of known options plus Other… free text**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 

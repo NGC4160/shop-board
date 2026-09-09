@@ -493,15 +493,26 @@ export function normalizeJobNumber(value: string): string {
 
 const JOB_NUMBER_PATTERN = /^\d+(-\d+)?$/;
 
-export function isValidJobNumber(value: string): boolean {
-  const normalized = normalizeJobNumber(value);
-  if (!normalized) return true;
-  return JOB_NUMBER_PATTERN.test(normalized);
+export function customerNameError(value: string): string | null {
+  if (!value.trim()) return "Customer name is required";
+  return null;
 }
 
 export function jobNumberError(value: string): string | null {
-  if (isValidJobNumber(value)) return null;
-  return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
+  const normalized = normalizeJobNumber(value);
+  if (!normalized) return "Job # is required";
+  if (!JOB_NUMBER_PATTERN.test(normalized)) {
+    return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
+  }
+  return null;
+}
+
+export function isValidJobNumber(value: string): boolean {
+  return jobNumberError(value) === null;
+}
+
+export function isBlankIdentity(job: Pick<CartJob, "customerName" | "jobNumber">): boolean {
+  return !job.customerName.trim() && !normalizeJobNumber(job.jobNumber);
 }
 
 export function hasDuplicateJobNumber(

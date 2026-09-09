@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   Download,
@@ -13,18 +13,22 @@ import {
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import {
+  customerNameError,
+  hasDuplicateJobNumber,
+  jobNumberError,
   PRIMARY_TECHS,
   isClosedStatus,
   type CartJob,
 } from "@/lib/jobs";
 import {
-  addRow,
+  createDraftJob,
   advanceJob,
   deleteJob,
   exportBoardJson,
   getBoardSnapshot,
   getServerBoardSnapshot,
   importBoardJson,
+  insertJob,
   loadSampleBoard,
   savePrefs,
   subscribeBoard,
@@ -35,7 +39,7 @@ import { CHIP_FILTERS, CHIP_LABELS, boardStats, countChip, jobMatches, type Chip
 import { sortJobsByJobNumber } from "@/lib/sort";
 import { startHcpMorningSync, type ClientHcpSyncResult } from "@/lib/hcp-client";
 import { CartMark } from "@/components/shop/cart-mark";
-import { BoardCards, BoardTable } from "@/components/shop/board-table";
+import { BoardTable } from "@/components/shop/board-table";
 import { JobDrawer } from "@/components/shop/job-drawer";
 import { formatClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -50,6 +54,8 @@ export function ShopApp() {
   const [tech, setTech] = useState("");
   const [chip, setChip] = useState<ChipFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<CartJob | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const searchRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -76,6 +82,18 @@ export function ShopApp() {
     });
   }, []);
 
+  const startDraft = useCallback(() => {
+    if (draft) {
+      toast.error("Fill customer name and job # on the new row");
+      setFocusId(draft.id);
+      return;
+    }
+    const job = createDraftJob();
+    setDraft(job);
+    setFocusId(job.id);
+    toast("Blank row added — enter customer and job #");
+  }, [draft]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -91,31 +109,71 @@ export function ShopApp() {
       }
       if ((event.key === "n" || event.key === "N") && !typing && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
-        addRow();
-        toast("Blank row added");
+        startDraft();
       }
       if (event.key === "Escape") setOpenId(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [startDraft]);
 
-  const visible = useMemo(
-    () =>
-      sortJobsByJobNumber(
-        board.jobs.filter((job) =>
-          jobMatches(job, { search, tech, chip, hideClosed: board.prefs.hideClosed }, now),
-        ),
+  const visible = useMemo(() => {
+    const saved = sortJobsByJobNumber(
+      board.jobs.filter((job) =>
+        jobMatches(job, { search, tech, chip, hideClosed: board.prefs.hideClosed }, now),
       ),
-    [board.jobs, search, tech, chip, board.prefs.hideClosed, now],
-  );
+    );
+    if (!draft) return saved;
+    return [draft, ...saved.filter((job) => job.id !== draft.id)];
+  }, [board.jobs, search, tech, chip, board.prefs.hideClosed, now, draft]);
   const stats = useMemo(() => boardStats(board.jobs, now), [board.jobs, now]);
-  const openJob = board.jobs.find((job) => job.id === openId) ?? null;
+  const openJob =
+    board.jobs.find((job) => job.id === openId) ??
+    (draft && draft.id === openId ? draft : null);
 
-  const onChange = (id: string, patch: Partial<CartJob>) => updateJob(id, patch);
+  const onChange = (id: string, patch: Partial<CartJob>) => {
+    if (draft && id === draft.id) {
+      if (patch.customerName !== undefined && customerNameError(patch.customerName)) {
+        return false;
+      }
+      if (patch.jobNumber !== undefined) {
+        if (jobNumberError(patch.jobNumber)) return false;
+        if (hasDuplicateJobNumber(board.jobs, id, patch.jobNumber)) return false;
+      }
+      const next: CartJob = {
+        ...draft,
+        ...patch,
+        customerName:
+          patch.customerName !== undefined ? patch.customerName.trim() : draft.customerName,
+        jobNumber:
+          patch.jobNumber !== undefined ? patch.jobNumber.trim() : draft.jobNumber,
+      };
+      if (
+        !customerNameError(next.customerName) &&
+        !jobNumberError(next.jobNumber) &&
+        !hasDuplicateJobNumber(board.jobs, next.id, next.jobNumber)
+      ) {
+        const ok = insertJob(next);
+        if (ok) {
+          setDraft(null);
+          setFocusId(null);
+        }
+        return ok;
+      }
+      setDraft(next);
+      return true;
+    }
+    return updateJob(id, patch);
+  };
 
   const onDelete = (id: string) => {
     if (openId === id) setOpenId(null);
+    if (draft && id === draft.id) {
+      setDraft(null);
+      setFocusId(null);
+      toast("Cart removed");
+      return;
+    }
     deleteJob(id);
     toast("Cart removed", {
       action: {
@@ -181,10 +239,7 @@ export function ShopApp() {
             </p>
             <button
               type="button"
-              onClick={() => {
-                addRow();
-                toast("Blank row added");
-              }}
+              onClick={() => startDraft()}
               className="inline-flex h-11 items-center gap-2 rounded-sm bg-accent px-4 text-sm font-semibold text-accent-ink"
             >
               <Plus className="size-4" />
@@ -333,30 +388,21 @@ export function ShopApp() {
           <div className="rounded-lg border border-border bg-surface px-6 py-16 text-center">
             <p className="font-display text-2xl font-semibold">No carts match</p>
             <p className="mt-2 text-sm text-muted">
-              {board.jobs.length === 0
+              {board.jobs.length === 0 && !draft
                 ? "Use Add cart to start the board."
                 : "Clear the search or pick another filter."}
             </p>
           </div>
         ) : (
-          <>
-            <BoardTable
-              jobs={visible}
-              allJobs={board.jobs}
-              onChange={onChange}
-              onAdvance={onAdvance}
-              onDelete={onDelete}
-              onOpen={setOpenId}
-            />
-            <BoardCards
-              jobs={visible}
-              allJobs={board.jobs}
-              onChange={onChange}
-              onAdvance={onAdvance}
-              onDelete={onDelete}
-              onOpen={setOpenId}
-            />
-          </>
+          <BoardTable
+            jobs={visible}
+            allJobs={draft ? [draft, ...board.jobs] : board.jobs}
+            onChange={onChange}
+            onAdvance={onAdvance}
+            onDelete={onDelete}
+            onOpen={setOpenId}
+            focusId={focusId}
+          />
         )}
         <p className="no-print mt-4 text-sm text-subtle">
           {visible.filter((job) => !isClosedStatus(job.status)).length} showing · {stats.open} open ·{" "}
