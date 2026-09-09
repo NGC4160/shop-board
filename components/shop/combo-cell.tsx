@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { listedOtherError } from "@/lib/jobs";
+import { listedOtherError, commitOtherValue } from "@/lib/jobs";
 
 const OTHER_VALUE = "__other__";
 
@@ -97,6 +97,14 @@ export function ComboCell({
 
   const commitText = (next: string) => {
     const trimmed = next.trim();
+    if (trimmed === "") {
+      const resolved = commitOtherValue(trimmed, value, emptyLabel);
+      setWarning("");
+      setPickedOther(false);
+      setTextDraft(resolved.next);
+      if (resolved.persist) onChange(resolved.next);
+      return;
+    }
     const listed = listedOtherError(trimmed, options);
     if (listed) {
       setWarning(listed);

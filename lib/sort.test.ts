@@ -43,7 +43,7 @@ describe("job number sort", () => {
     );
   });
 
-  it("sends zero and leading-zero junk to the end", () => {
+  it("sends zero junk to the end and sorts padded numbers with their core", () => {
     const sorted = sortJobsByJobNumber([
       { ...seedJobs[0], id: "a", jobNumber: "000" },
       { ...seedJobs[0], id: "b", jobNumber: "1842" },
@@ -51,7 +51,8 @@ describe("job number sort", () => {
     ]);
     assert.deepEqual(
       sorted.map((job) => job.jobNumber),
-      ["1842", "000", "01842"],
+      ["1842", "01842", "000"],
     );
+    assert.equal(compareJobNumbers("01855", "1855"), 0);
   });
 });

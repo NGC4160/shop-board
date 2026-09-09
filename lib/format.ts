@@ -35,7 +35,7 @@ export function formatDay(ms: number): string {
 }
 
 export function agingLabel(days: number): string {
-  if (days <= 0) return "today";
+  if (!Number.isFinite(days) || days <= 0 || days > 365) return "today";
   if (days === 1) return "1d in stage";
   return `${days}d in stage`;
 }

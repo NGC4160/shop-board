@@ -17,6 +17,7 @@ import {
   hasDuplicateJobNumber,
   isBlankIdentity,
   jobNumberError,
+  normalizeJobNumber,
   PRIMARY_TECHS,
   isClosedStatus,
   type CartJob,
@@ -147,7 +148,7 @@ export function ShopApp() {
         customerName:
           patch.customerName !== undefined ? patch.customerName.trim() : draft.customerName,
         jobNumber:
-          patch.jobNumber !== undefined ? patch.jobNumber.trim() : draft.jobNumber,
+          patch.jobNumber !== undefined ? normalizeJobNumber(patch.jobNumber) : draft.jobNumber,
       };
       if (
         !customerNameError(next.customerName) &&

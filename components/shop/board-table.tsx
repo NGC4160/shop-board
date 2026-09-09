@@ -14,9 +14,8 @@ import {
   TIME_PRESETS,
   customerNameError,
   daysInStatus,
-  hasDuplicateJobNumber,
   isStale,
-  jobNumberError,
+  jobNumberWarning,
   nextPipelineStatus,
   nextPriority,
   normalizeJobNumber,
@@ -349,7 +348,7 @@ function IdentityFields({
   const [seenName, setSeenName] = useState(job.customerName);
   const [seenJob, setSeenJob] = useState(job.jobNumber);
   const [nameWarning, setNameWarning] = useState(customerNameError(job.customerName) ?? "");
-  const [jobWarning, setJobWarning] = useState(jobNumberError(job.jobNumber) ?? "");
+  const [jobWarning, setJobWarning] = useState(jobNumberWarning(job.jobNumber, jobs, job.id));
 
   if (job.customerName !== seenName) {
     setSeenName(job.customerName);
@@ -359,7 +358,7 @@ function IdentityFields({
   if (job.jobNumber !== seenJob) {
     setSeenJob(job.jobNumber);
     setJobDraft(job.jobNumber);
-    setJobWarning(jobNumberError(job.jobNumber) ?? "");
+    setJobWarning(jobNumberWarning(job.jobNumber, jobs, job.id));
   }
 
   useEffect(() => {
@@ -380,18 +379,15 @@ function IdentityFields({
   };
 
   const commitJobNumber = () => {
-    const formatError = jobNumberError(jobDraft);
-    if (formatError) {
-      setJobWarning(formatError);
-      return;
-    }
-    if (hasDuplicateJobNumber(jobs, job.id, jobDraft)) {
-      setJobWarning(`Job # ${normalizeJobNumber(jobDraft)} is already on the board`);
+    const warning = jobNumberWarning(jobDraft, jobs, job.id);
+    if (warning) {
+      setJobWarning(warning);
       return;
     }
     setJobWarning("");
     const normalized = normalizeJobNumber(jobDraft);
-    if (normalized !== job.jobNumber) onChange(job.id, { jobNumber: jobDraft });
+    setJobDraft(normalized);
+    if (normalized !== job.jobNumber) onChange(job.id, { jobNumber: normalized });
   };
 
   return (
@@ -426,16 +422,7 @@ function IdentityFields({
         onChange={(event) => {
           const next = event.target.value;
           setJobDraft(next);
-          const formatError = jobNumberError(next);
-          if (formatError) {
-            setJobWarning(formatError);
-            return;
-          }
-          if (hasDuplicateJobNumber(jobs, job.id, next)) {
-            setJobWarning(`Job # ${normalizeJobNumber(next)} is already on the board`);
-            return;
-          }
-          setJobWarning("");
+          setJobWarning(jobNumberWarning(next, jobs, job.id));
         }}
         onBlur={commitJobNumber}
         aria-invalid={Boolean(jobWarning)}
