@@ -3,7 +3,9 @@ import {
   createId,
   emptyDraft,
   draftToJob,
+  isGhostJob,
   normalizeJobNumber,
+  saneStatusChangedAt,
   type CartJob,
 } from "@/lib/jobs";
 import type { HcpOpenJob } from "@/lib/hcp";
@@ -80,7 +82,10 @@ export function mergeHcpJobs(
     const customerChanged = nextCustomer !== existing.customerName;
     const phoneChanged = nextPhone !== existing.phone;
     if (!statusChanged && !customerChanged && !phoneChanged) {
-      merged.push(existing);
+      merged.push({
+        ...existing,
+        statusChangedAt: saneStatusChangedAt(existing, now),
+      });
       continue;
     }
 
@@ -101,15 +106,21 @@ export function mergeHcpJobs(
       phone: nextPhone,
       status: nextStatus,
       history,
-      statusChangedAt: statusChanged ? now : existing.statusChangedAt,
+      statusChangedAt: statusChanged ? now : saneStatusChangedAt(existing, now),
       updatedAt: now,
     });
     updated += 1;
   }
 
   for (const job of local) {
+    if (isGhostJob(job)) continue;
     const key = normalizeJobNumber(job.jobNumber);
-    if (!key || !seen.has(key)) merged.push(job);
+    if (!key || !seen.has(key)) {
+      merged.push({
+        ...job,
+        statusChangedAt: saneStatusChangedAt(job, now),
+      });
+    }
   }
 
   return { jobs: merged, added, updated };

@@ -75,6 +75,21 @@ export const CART_MAKES = [
   "Advanced EV",
 ] as const;
 
+export const CART_COLORS = [
+  "White",
+  "Black",
+  "Red",
+  "Blue",
+  "Green",
+  "Tan",
+  "Beige",
+  "Silver",
+  "Platinum",
+  "Burgundy",
+  "Gray",
+  "Orange",
+] as const;
+
 export const BAYS = [
   "Bay 1",
   "Bay 2",
@@ -90,6 +105,18 @@ export const BAYS = [
 
 export const PRIORITIES = ["none", "hot", "promised", "waiting"] as const;
 export type Priority = (typeof PRIORITIES)[number];
+
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  none: "No flag",
+  hot: "Hot",
+  promised: "Promised",
+  waiting: "Waiting",
+};
+
+export function nextPriority(priority: Priority): Priority {
+  const index = PRIORITIES.indexOf(priority);
+  return PRIORITIES[(index + 1) % PRIORITIES.length] ?? "none";
+}
 
 export type HistoryKind = "created" | "status" | "tech" | "note" | "edit";
 
@@ -460,21 +487,61 @@ export const emptyDraft: CartJobDraft = {
   notes: "",
 };
 
+/**
+ * Trim and strip leading zeros from the numeric core so `01855` and `1855`
+ * are the same job. Keeps a hyphen suffix (`17312-1`). All-zeros become `0`.
+ */
 export function normalizeJobNumber(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  const match = trimmed.match(/^(\d+)(-\d+)?$/);
+  if (!match) return trimmed;
+  const major = (match[1] ?? "").replace(/^0+/, "") || "0";
+  return `${major}${match[2] ?? ""}`;
 }
 
 const JOB_NUMBER_PATTERN = /^\d+(-\d+)?$/;
 
-export function isValidJobNumber(value: string): boolean {
-  const normalized = normalizeJobNumber(value);
-  if (!normalized) return true;
-  return JOB_NUMBER_PATTERN.test(normalized);
+export function customerNameError(value: string): string | null {
+  if (!value.trim()) return "Customer name is required";
+  return null;
 }
 
 export function jobNumberError(value: string): string | null {
-  if (isValidJobNumber(value)) return null;
-  return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
+  const trimmed = value.trim();
+  if (!trimmed) return "Job # is required";
+  if (!JOB_NUMBER_PATTERN.test(trimmed)) {
+    return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
+  }
+  const major = normalizeJobNumber(trimmed).split("-")[0] ?? "";
+  if (major === "0") return "Job # can't be zeros";
+  return null;
+}
+
+export function isValidJobNumber(value: string): boolean {
+  return jobNumberError(value) === null;
+}
+
+/** Other… must not impersonate a listed option (e.g. typing In Progress as a custom status). */
+export function listedOtherError(value: string, options: readonly string[]): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (options.some((option) => option.toLowerCase() === trimmed.toLowerCase())) {
+    return "Pick it from the list";
+  }
+  return null;
+}
+
+export function isBlankIdentity(job: Pick<CartJob, "customerName" | "jobNumber">): boolean {
+  return !job.customerName.trim() && !normalizeJobNumber(job.jobNumber);
+}
+
+/** Live Add cart persisted empty/untitled rows. Drop them on load so they never bump Open. */
+export function isGhostJob(job: Pick<CartJob, "customerName" | "jobNumber">): boolean {
+  if (isBlankIdentity(job)) return true;
+  const name = job.customerName.trim();
+  const untitled = /^untitled(\s+cart)?$/i.test(name);
+  if ((!name || untitled) && jobNumberError(job.jobNumber)) return true;
+  return false;
 }
 
 export function hasDuplicateJobNumber(
@@ -483,10 +550,37 @@ export function hasDuplicateJobNumber(
   jobNumber: string,
 ): boolean {
   const normalized = normalizeJobNumber(jobNumber);
-  if (!normalized) return false;
+  if (!normalized || normalized === "0") return false;
   return jobs.some(
     (job) => job.id !== id && normalizeJobNumber(job.jobNumber) === normalized,
   );
+}
+
+export function jobNumberWarning(
+  jobNumber: string,
+  jobs: CartJob[],
+  id: string,
+): string {
+  const format = jobNumberError(jobNumber);
+  if (format) return format;
+  if (hasDuplicateJobNumber(jobs, id, jobNumber)) {
+    return `Job # ${normalizeJobNumber(jobNumber)} is already on the board`;
+  }
+  return "";
+}
+
+/**
+ * Empty Other… : Tech/Bay (emptyLabel set) persist Unassigned/—.
+ * Status / Next / Time have no empty option — keep the previous value.
+ */
+export function commitOtherValue(
+  trimmed: string,
+  previous: string,
+  emptyLabel?: string,
+): { next: string; persist: boolean } {
+  if (trimmed !== "") return { next: trimmed, persist: true };
+  if (emptyLabel !== undefined) return { next: "", persist: true };
+  return { next: previous, persist: false };
 }
 
 export function createId(): string {
@@ -601,8 +695,42 @@ export function cartLabel(job: Pick<CartJob, "cartYear" | "cartMake" | "cartMode
   return [job.cartYear, job.cartMake, job.cartModel].filter(Boolean).join(" ");
 }
 
+/** Stage ages older than this are treated as missing/corrupt, not "20705d in stage". */
+export const MAX_STAGE_AGE_DAYS = 365;
+const MAX_STAGE_MS = MAX_STAGE_AGE_DAYS * DAY;
+/** Unix seconds (2026 ≈ 1.75e9) vs milliseconds (1.75e12). */
+const UNIX_SECONDS_MAX = 1e10;
+
+export function coerceMillis(raw: unknown): number | null {
+  if (typeof raw !== "number" && typeof raw !== "string") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n < UNIX_SECONDS_MAX ? n * 1000 : n;
+}
+
+function saneStageTimestamp(raw: unknown, now: number): number | null {
+  const ms = coerceMillis(raw);
+  if (ms == null || ms > now) return null;
+  if (now - ms > MAX_STAGE_MS) return null;
+  return ms;
+}
+
+export function saneStatusChangedAt(
+  job: Pick<CartJob, "createdAt" | "updatedAt" | "statusChangedAt">,
+  now = Date.now(),
+): number {
+  return (
+    saneStageTimestamp(job.statusChangedAt, now) ??
+    saneStageTimestamp(job.createdAt, now) ??
+    now
+  );
+}
+
 export function daysInStatus(job: CartJob, now = Date.now()): number {
-  return Math.max(0, Math.floor((now - job.statusChangedAt) / DAY));
+  const at = saneStatusChangedAt(job, now);
+  const days = Math.floor((now - at) / DAY);
+  if (!Number.isFinite(days) || days < 0 || days > MAX_STAGE_AGE_DAYS) return 0;
+  return days;
 }
 
 export function daysOnBoard(job: CartJob, now = Date.now()): number {
@@ -757,8 +885,13 @@ export function isCartJob(value: unknown): value is CartJob {
 export function upgradeJob(value: unknown): CartJob | null {
   if (!isCartJob(value)) return null;
   const job = value as CartJob & Record<string, unknown>;
-  const createdAt = typeof job.createdAt === "number" ? job.createdAt : Date.now();
-  const updatedAt = typeof job.updatedAt === "number" ? job.updatedAt : createdAt;
+  const now = Date.now();
+  const createdMs = coerceMillis(job.createdAt);
+  const createdAt =
+    createdMs != null && createdMs <= now ? createdMs : now;
+  const updatedMs = coerceMillis(job.updatedAt);
+  const updatedAt =
+    updatedMs != null && updatedMs <= now ? updatedMs : createdAt;
   const history = Array.isArray(job.history)
     ? job.history.filter(
         (entry): entry is JobHistory =>
@@ -771,7 +904,7 @@ export function upgradeJob(value: unknown): CartJob | null {
   return {
     id: job.id,
     customerName: job.customerName,
-    jobNumber: job.jobNumber,
+    jobNumber: normalizeJobNumber(job.jobNumber),
     phone: typeof job.phone === "string" ? job.phone : "",
     cartYear: typeof job.cartYear === "string" ? job.cartYear : "",
     cartMake: typeof job.cartMake === "string" ? job.cartMake : "",
@@ -789,7 +922,20 @@ export function upgradeJob(value: unknown): CartJob | null {
     history,
     createdAt,
     updatedAt,
-    statusChangedAt:
-      typeof job.statusChangedAt === "number" ? job.statusChangedAt : updatedAt,
+    statusChangedAt: saneStatusChangedAt(
+      {
+        createdAt,
+        updatedAt,
+        statusChangedAt:
+          typeof job.statusChangedAt === "number" ? job.statusChangedAt : updatedAt,
+      },
+      now,
+    ),
   };
+}
+
+export function sanitizeLoadedJobs(values: unknown[]): CartJob[] {
+  return values
+    .map(upgradeJob)
+    .filter((job): job is CartJob => job !== null && !isGhostJob(job));
 }

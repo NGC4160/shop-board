@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { listedOtherError, commitOtherValue } from "@/lib/jobs";
 
 const OTHER_VALUE = "__other__";
 
@@ -33,8 +34,15 @@ export function ComboCell({
   const [open, setOpen] = useState(false);
   const [pickedOther, setPickedOther] = useState(false);
   const [textDraft, setTextDraft] = useState(value);
+  const [seenValue, setSeenValue] = useState(value);
   const [query, setQuery] = useState("");
   const [warning, setWarning] = useState("");
+
+  if (value !== seenValue) {
+    setSeenValue(value);
+    setTextDraft(value);
+    if (options.includes(value) || value === "") setPickedOther(false);
+  }
 
   const isKnown = value === "" || options.includes(value);
   const showText = !isKnown || pickedOther;
@@ -57,11 +65,6 @@ export function ComboCell({
     ),
   );
   const [highlight, setHighlight] = useState(currentIndex);
-
-  useEffect(() => {
-    setTextDraft(value);
-    if (options.includes(value) || value === "") setPickedOther(false);
-  }, [value, options]);
 
   useEffect(() => {
     if (!open) return;
@@ -93,14 +96,28 @@ export function ComboCell({
   };
 
   const commitText = (next: string) => {
-    const error = errorFor?.(next) ?? null;
+    const trimmed = next.trim();
+    if (trimmed === "") {
+      const resolved = commitOtherValue(trimmed, value, emptyLabel);
+      setWarning("");
+      setPickedOther(false);
+      setTextDraft(resolved.next);
+      if (resolved.persist) onChange(resolved.next);
+      return;
+    }
+    const listed = listedOtherError(trimmed, options);
+    if (listed) {
+      setWarning(listed);
+      return;
+    }
+    const error = errorFor?.(trimmed) ?? null;
     if (error) {
       setWarning(error);
       return;
     }
     setWarning("");
     setPickedOther(false);
-    onChange(next);
+    onChange(trimmed);
   };
 
   const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -144,7 +161,7 @@ export function ComboCell({
             setTextDraft(event.target.value);
             setWarning("");
           }}
-          onBlur={() => commitText(textDraft.trim())}
+          onBlur={() => commitText(textDraft)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.currentTarget.blur();

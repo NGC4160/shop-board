@@ -5,24 +5,22 @@ import {
   createId,
   draftToJob,
   emptyDraft,
+  customerNameError,
   hasDuplicateJobNumber,
-  isValidJobNumber,
+  sanitizeLoadedJobs,
+  jobNumberError,
   nextPipelineStatus,
   normalizeJobNumber,
   seedJobs,
   timeExpectationError,
-  upgradeJob,
   type CartJob,
   type Priority,
 } from "@/lib/jobs";
 import { mergeHcpJobs } from "@/lib/hcp-merge";
 import type { HcpOpenJob } from "@/lib/hcp";
 
-export type BoardView = "floor" | "queue";
-
 export type BoardPrefs = {
   hideClosed: boolean;
-  view: BoardView;
 };
 
 export type BoardSnapshot = {
@@ -33,7 +31,6 @@ export type BoardSnapshot = {
 
 const defaultPrefs: BoardPrefs = {
   hideClosed: true,
-  view: "floor",
 };
 
 type StoreListener = () => void;
@@ -61,7 +58,7 @@ function parseLegacyJobs(raw: string | null): CartJob[] | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return null;
-    const jobs = parsed.map(upgradeJob).filter((job): job is CartJob => job !== null);
+    const jobs = sanitizeLoadedJobs(parsed);
     return jobs.length > 0 ? jobs : null;
   } catch {
     return null;
@@ -75,9 +72,7 @@ function readFromStorage(): BoardSnapshot {
       const parsed = JSON.parse(raw) as unknown;
       if (parsed && typeof parsed === "object") {
         const record = parsed as Record<string, unknown>;
-        const jobs = Array.isArray(record.jobs)
-          ? record.jobs.map(upgradeJob).filter((job): job is CartJob => job !== null)
-          : [];
+        const jobs = Array.isArray(record.jobs) ? sanitizeLoadedJobs(record.jobs) : [];
         return {
           jobs: jobs.length > 0 ? jobs : seedJobs,
           prefs: {
@@ -87,13 +82,6 @@ function readFromStorage(): BoardSnapshot {
               typeof (record.prefs as BoardPrefs).hideClosed === "boolean"
                 ? (record.prefs as BoardPrefs).hideClosed
                 : true,
-            view:
-              typeof record.prefs === "object" &&
-              record.prefs !== null &&
-              ((record.prefs as BoardPrefs).view === "queue" ||
-                (record.prefs as BoardPrefs).view === "floor")
-                ? (record.prefs as BoardPrefs).view
-                : "floor",
           },
           lastHcpSyncAt:
             typeof record.lastHcpSyncAt === "number" ? record.lastHcpSyncAt : null,
@@ -120,6 +108,7 @@ export function subscribeBoard(onStoreChange: StoreListener): () => void {
     const next = readFromStorage();
     queueMicrotask(() => {
       snapshot = next;
+      persist();
       emit();
     });
   }
@@ -157,8 +146,12 @@ export function updateJob(id: string, patch: Partial<CartJob>): boolean {
   if (!current) return false;
 
   const nextPatch = { ...patch };
+  if (nextPatch.customerName !== undefined) {
+    if (customerNameError(nextPatch.customerName)) return false;
+    nextPatch.customerName = nextPatch.customerName.trim();
+  }
   if (nextPatch.jobNumber !== undefined) {
-    if (!isValidJobNumber(nextPatch.jobNumber)) return false;
+    if (jobNumberError(nextPatch.jobNumber)) return false;
     if (hasDuplicateJobNumber(jobs, id, nextPatch.jobNumber)) return false;
     nextPatch.jobNumber = normalizeJobNumber(nextPatch.jobNumber);
   }
@@ -218,16 +211,26 @@ export function updateJob(id: string, patch: Partial<CartJob>): boolean {
   return true;
 }
 
-export function addRow(): string {
-  const id = createId();
-  const job = {
+export function createDraftJob(): CartJob {
+  return {
     ...draftToJob(emptyDraft),
-    id,
+    id: createId(),
     customerName: "",
     jobNumber: "",
   };
-  saveJobs([job, ...snapshot.jobs]);
-  return id;
+}
+
+export function insertJob(job: CartJob): boolean {
+  if (customerNameError(job.customerName)) return false;
+  if (jobNumberError(job.jobNumber)) return false;
+  if (hasDuplicateJobNumber(snapshot.jobs, job.id, job.jobNumber)) return false;
+  const next: CartJob = {
+    ...job,
+    customerName: job.customerName.trim(),
+    jobNumber: normalizeJobNumber(job.jobNumber),
+  };
+  saveJobs([next, ...snapshot.jobs.filter((item) => item.id !== job.id)]);
+  return true;
 }
 
 export function deleteJob(id: string) {
@@ -279,7 +282,7 @@ export function importBoardJson(raw: string): { ok: true; count: number } | { ok
         ? (parsed as { jobs: unknown[] }).jobs
         : null;
     if (!list) return { ok: false, error: "File does not look like a shop board export" };
-    const jobs = list.map(upgradeJob).filter((job): job is CartJob => job !== null);
+    const jobs = sanitizeLoadedJobs(list);
     if (jobs.length === 0) return { ok: false, error: "No carts found in that file" };
     replaceBoard(jobs);
     return { ok: true, count: jobs.length };

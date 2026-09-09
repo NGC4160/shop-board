@@ -1,24 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Flag, PanelRight, Trash2 } from "lucide-react";
 import {
   BAYS,
+  CART_COLORS,
+  CART_MAKES,
   NEXT_ACTION_PRESETS,
   PIPELINE_STATUSES,
   PRIMARY_TECHS,
+  PRIORITY_LABEL,
   STATUS_CHIP,
   TIME_PRESETS,
-  cartLabel,
+  customerNameError,
   daysInStatus,
-  hasDuplicateJobNumber,
   isStale,
-  jobNumberError,
+  jobNumberWarning,
   nextPipelineStatus,
+  nextPriority,
   normalizeJobNumber,
   statusTone,
   timeExpectationError,
   type CartJob,
+  type Priority,
 } from "@/lib/jobs";
 import { ComboCell } from "@/components/shop/combo-cell";
 import { agingLabel } from "@/lib/format";
@@ -32,6 +36,7 @@ type BoardTableProps = {
   onAdvance: (id: string) => void;
   onDelete: (id: string) => void;
   onOpen: (id: string) => void;
+  focusId?: string | null;
 };
 
 export function BoardTable({
@@ -41,21 +46,22 @@ export function BoardTable({
   onAdvance,
   onDelete,
   onOpen,
+  focusId,
 }: BoardTableProps) {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   return (
-    <div className="hidden overflow-visible rounded-lg border border-border bg-surface md:block">
-      <table className="w-full table-fixed border-collapse text-left">
+    <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+      <table className="w-full min-w-[1180px] table-fixed border-collapse text-left">
         <colgroup>
           <col className="w-[18%]" />
-          <col className="w-[14%]" />
+          <col className="w-[18%]" />
           <col className="w-[9%]" />
-          <col className="w-[13%]" />
+          <col className="w-[12%]" />
           <col className="w-[16%]" />
-          <col className="w-[14%]" />
-          <col className="w-[10%]" />
-          <col className="w-[6%]" />
+          <col className="w-[13%]" />
+          <col className="w-[9%]" />
+          <col className="w-[5%]" />
         </colgroup>
         <thead className="bg-surface-2 text-sm">
           <tr>
@@ -105,21 +111,15 @@ export function BoardTable({
                     flagBar(job.priority),
                   )}
                 >
-                  <IdentityFields job={job} jobs={allJobs} onChange={onChange} />
+                  <IdentityFields
+                    job={job}
+                    jobs={allJobs}
+                    onChange={onChange}
+                    autoFocus={focusId === job.id}
+                  />
                 </td>
-                <td className="px-1 py-1">
-                  <button
-                    type="button"
-                    onClick={() => onOpen(job.id)}
-                    className="flex h-11 w-full min-w-0 flex-col items-start justify-center rounded-sm px-2 text-left"
-                  >
-                    <span className="w-full truncate text-sm font-medium">
-                      {cartLabel(job) || "Add cart"}
-                    </span>
-                    <span className="w-full truncate text-xs text-subtle">
-                      {job.cartColor || job.bay || "Details"}
-                    </span>
-                  </button>
+                <td className="overflow-visible px-1 py-1">
+                  <CartFields job={job} onChange={onChange} />
                 </td>
                 <td className="overflow-visible px-1 py-1">
                   <ComboCell
@@ -195,10 +195,10 @@ export function BoardTable({
                       type="button"
                       onClick={() => onOpen(job.id)}
                       className="inline-flex h-11 items-center justify-center rounded-sm border border-border"
-                      title="Open details"
+                      title="Notes, phone, activity"
                     >
                       <PanelRight className="size-4" />
-                      <span className="sr-only">Open details</span>
+                      <span className="sr-only">Notes and activity</span>
                     </button>
                     {pendingDelete === job.id ? (
                       <>
@@ -241,185 +241,6 @@ export function BoardTable({
   );
 }
 
-export function BoardCards({
-  jobs,
-  allJobs,
-  onChange,
-  onAdvance,
-  onDelete,
-  onOpen,
-}: BoardTableProps) {
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-
-  return (
-    <ul className="grid gap-3 md:hidden">
-      {jobs.map((job) => {
-        const next = nextPipelineStatus(job.status);
-        return (
-          <li
-            key={job.id}
-            className={cn(
-              "rounded-lg border border-border bg-surface p-3",
-              flagBar(job.priority),
-            )}
-          >
-            <div className="grid gap-2">
-              <IdentityFields job={job} jobs={allJobs} onChange={onChange} />
-              <p className="text-sm text-muted">
-                {cartLabel(job) || "No cart details"}
-                {job.bay ? ` · ${job.bay}` : ""}
-              </p>
-              <FieldLabel>Primary tech</FieldLabel>
-              <ComboCell
-                value={job.primaryTech}
-                options={PRIMARY_TECHS}
-                emptyLabel="Unassigned"
-                placeholder="Type a tech name"
-                onChange={(primaryTech) => onChange(job.id, { primaryTech })}
-              />
-              <FieldLabel>Status</FieldLabel>
-              <ComboCell
-                value={job.status}
-                options={PIPELINE_STATUSES}
-                placeholder="Type a status"
-                selectClassName={cn("font-semibold", STATUS_CHIP[statusTone(job.status)])}
-                onChange={(status) => onChange(job.id, { status })}
-              />
-              <FieldLabel>Next action</FieldLabel>
-              <ComboCell
-                value={job.nextAction}
-                options={NEXT_ACTION_PRESETS}
-                placeholder="What happens next?"
-                onChange={(nextAction) => onChange(job.id, { nextAction })}
-              />
-              <FieldLabel>Time expectation</FieldLabel>
-              <ComboCell
-                value={job.timeExpectation}
-                options={TIME_PRESETS}
-                placeholder="ETA / due / promised"
-                errorFor={timeExpectationError}
-                onChange={(timeExpectation) => onChange(job.id, { timeExpectation })}
-              />
-              <div className="mt-1 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={!next}
-                  onClick={() => onAdvance(job.id)}
-                  className="inline-flex h-11 flex-1 items-center justify-center rounded-sm bg-accent px-3 text-sm font-semibold text-accent-ink disabled:opacity-40"
-                >
-                  {next ? `Advance · ${next}` : "End of pipeline"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpen(job.id)}
-                  className="inline-flex h-11 items-center justify-center rounded-sm border border-border px-4 text-sm font-medium"
-                >
-                  Details
-                </button>
-                {pendingDelete === job.id ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onDelete(job.id);
-                        setPendingDelete(null);
-                      }}
-                      className="inline-flex h-11 flex-1 items-center justify-center rounded-sm bg-danger text-sm font-semibold text-danger-fg"
-                    >
-                      Confirm delete
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPendingDelete(null)}
-                      className="inline-flex h-11 items-center justify-center rounded-sm border border-border px-4 text-sm font-medium"
-                    >
-                      Keep
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setPendingDelete(job.id)}
-                    className="inline-flex h-11 items-center justify-center rounded-sm border border-danger/40 px-4 text-sm font-medium text-danger"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-export function QueueBoard({
-  jobs,
-  onOpen,
-}: {
-  jobs: CartJob[];
-  onOpen: (id: string) => void;
-}) {
-  const groups: { status: string; jobs: CartJob[] }[] = PIPELINE_STATUSES.map((status) => ({
-    status,
-    jobs: jobs.filter((job) => job.status === status),
-  })).filter((group) => group.jobs.length > 0);
-  const custom = jobs.filter(
-    (job) => !(PIPELINE_STATUSES as readonly string[]).includes(job.status),
-  );
-  if (custom.length > 0) groups.push({ status: "Other", jobs: custom });
-
-  if (groups.length === 0) return null;
-
-  return (
-    <div className="hidden space-y-6 md:block">
-      {groups.map((group) => (
-        <section key={group.status}>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-xl font-semibold tracking-tight">{group.status}</h2>
-            <p className="font-mono text-xs text-muted tabular-nums">{group.jobs.length}</p>
-          </div>
-          <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
-            {group.jobs.map((job) => (
-              <li key={job.id}>
-                <button
-                  type="button"
-                  onClick={() => onOpen(job.id)}
-                  className={cn(
-                    "flex w-full items-center gap-4 px-4 py-3 text-left",
-                    flagBar(job.priority),
-                  )}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">
-                      {job.customerName || "Untitled"}{" "}
-                      <span className="font-mono text-muted">#{job.jobNumber || "—"}</span>
-                    </p>
-                    <p className="truncate text-sm text-muted">
-                      {cartLabel(job) || "No cart"} · {job.primaryTech || "Unassigned"} ·{" "}
-                      {job.nextAction || "No next action"}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className={cn("text-sm", isDueToday(job) ? "font-medium text-danger" : "text-muted")}>
-                      {job.timeExpectation || "No time"}
-                    </p>
-                    <p className="text-xs text-subtle">{job.bay || "No bay"}</p>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function FieldLabel({ children }: { children: string }) {
-  return <p className="text-xs font-semibold tracking-wide text-muted uppercase">{children}</p>;
-}
 
 function ColumnLabel({ children }: { children: string }) {
   return (
@@ -436,80 +257,183 @@ function flagBar(priority: CartJob["priority"]) {
   return "";
 }
 
+function flagButtonClass(priority: Priority) {
+  if (priority === "hot") return "border-accent text-accent";
+  if (priority === "promised") return "border-foreground/40 text-foreground";
+  if (priority === "waiting") return "border-[var(--color-flag-waiting)] text-[var(--color-flag-waiting)]";
+  return "border-border text-subtle";
+}
+
+function FlagButton({
+  priority,
+  onCycle,
+}: {
+  priority: Priority;
+  onCycle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={`Flag: ${PRIORITY_LABEL[priority]}. Tap to change.`}
+      aria-label={`Flag ${PRIORITY_LABEL[priority]}`}
+      onClick={onCycle}
+      className={cn(
+        "inline-flex size-11 shrink-0 items-center justify-center rounded-sm border",
+        flagButtonClass(priority),
+      )}
+    >
+      <Flag className={cn("size-4", priority === "none" ? "opacity-50" : "fill-current")} />
+    </button>
+  );
+}
+
+function CartFields({
+  job,
+  onChange,
+}: {
+  job: CartJob;
+  onChange: (id: string, patch: Partial<CartJob>) => boolean;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1">
+      <input
+        aria-label="Cart year"
+        inputMode="numeric"
+        value={job.cartYear}
+        onChange={(event) => onChange(job.id, { cartYear: event.target.value })}
+        placeholder="Year"
+        className="h-11 min-w-0 rounded-sm border border-border bg-background px-2.5 text-sm"
+      />
+      <ComboCell
+        value={job.cartMake}
+        options={CART_MAKES}
+        emptyLabel="—"
+        placeholder="Make"
+        aria-label="Cart make"
+        onChange={(cartMake) => onChange(job.id, { cartMake })}
+      />
+      <input
+        aria-label="Cart model"
+        value={job.cartModel}
+        onChange={(event) => onChange(job.id, { cartModel: event.target.value })}
+        placeholder="Model"
+        className="h-11 min-w-0 rounded-sm border border-border bg-background px-2.5 text-sm"
+      />
+      <ComboCell
+        value={job.cartColor}
+        options={CART_COLORS}
+        emptyLabel="—"
+        placeholder="Color"
+        aria-label="Cart color"
+        onChange={(cartColor) => onChange(job.id, { cartColor })}
+      />
+    </div>
+  );
+}
+
 function IdentityFields({
   job,
   jobs,
   onChange,
+  autoFocus = false,
 }: {
   job: CartJob;
   jobs: CartJob[];
   onChange: (id: string, patch: Partial<CartJob>) => boolean;
+  autoFocus?: boolean;
 }) {
+  const nameRef = useRef<HTMLInputElement>(null);
   const [nameDraft, setNameDraft] = useState(job.customerName);
   const [jobDraft, setJobDraft] = useState(job.jobNumber);
-  const [warning, setWarning] = useState("");
+  const [seenName, setSeenName] = useState(job.customerName);
+  const [seenJob, setSeenJob] = useState(job.jobNumber);
+  const [nameWarning, setNameWarning] = useState(customerNameError(job.customerName) ?? "");
+  const [jobWarning, setJobWarning] = useState(jobNumberWarning(job.jobNumber, jobs, job.id));
 
-  useEffect(() => {
+  if (job.customerName !== seenName) {
+    setSeenName(job.customerName);
     setNameDraft(job.customerName);
-  }, [job.customerName]);
+    setNameWarning(customerNameError(job.customerName) ?? "");
+  }
+  if (job.jobNumber !== seenJob) {
+    setSeenJob(job.jobNumber);
+    setJobDraft(job.jobNumber);
+    setJobWarning(jobNumberWarning(job.jobNumber, jobs, job.id));
+  }
 
   useEffect(() => {
-    setJobDraft(job.jobNumber);
-  }, [job.jobNumber]);
+    if (autoFocus) nameRef.current?.focus();
+  }, [autoFocus]);
 
-  const changeJobNumber = (next: string) => {
-    setJobDraft(next);
-    const formatError = jobNumberError(next);
-    if (formatError) {
-      setWarning(formatError);
+  const commitName = () => {
+    const trimmed = nameDraft.trim();
+    const error = customerNameError(trimmed);
+    if (error) {
+      setNameWarning(error);
+      setNameDraft(trimmed);
       return;
     }
-    if (hasDuplicateJobNumber(jobs, job.id, next)) {
-      setWarning(`Job # ${normalizeJobNumber(next)} is already on the board`);
+    setNameWarning("");
+    setNameDraft(trimmed);
+    if (trimmed !== job.customerName) onChange(job.id, { customerName: trimmed });
+  };
+
+  const commitJobNumber = () => {
+    const warning = jobNumberWarning(jobDraft, jobs, job.id);
+    if (warning) {
+      setJobWarning(warning);
       return;
     }
-    setWarning("");
-    onChange(job.id, { jobNumber: next });
+    setJobWarning("");
+    const normalized = normalizeJobNumber(jobDraft);
+    setJobDraft(normalized);
+    if (normalized !== job.jobNumber) onChange(job.id, { jobNumber: normalized });
   };
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <div className="flex items-center gap-1">
-        {job.priority !== "none" ? (
-          <Flag className="size-3.5 shrink-0 text-accent" aria-label={job.priority} />
-        ) : null}
+        <FlagButton
+          priority={job.priority}
+          onCycle={() => onChange(job.id, { priority: nextPriority(job.priority) })}
+        />
         <input
+          ref={nameRef}
           aria-label="Customer name"
           value={nameDraft}
           onChange={(event) => {
             setNameDraft(event.target.value);
-            onChange(job.id, { customerName: event.target.value });
+            if (event.target.value.trim()) setNameWarning("");
           }}
-          onBlur={() => {
-            const trimmed = nameDraft.trim();
-            setNameDraft(trimmed);
-            if (trimmed !== job.customerName) onChange(job.id, { customerName: trimmed });
-          }}
+          onBlur={commitName}
+          aria-invalid={Boolean(nameWarning)}
           placeholder="Customer name"
-          className="h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-sm font-semibold"
+          className={cn(
+            "h-11 min-w-0 w-full rounded-sm border bg-background px-2.5 text-sm font-semibold",
+            nameWarning ? "border-danger" : "border-border",
+          )}
         />
       </div>
+      {nameWarning ? <p className="text-xs font-semibold text-danger">{nameWarning}</p> : null}
       <input
         aria-label="Job number"
         inputMode="numeric"
         value={jobDraft}
-        onChange={(event) => changeJobNumber(event.target.value)}
-        onBlur={() => {
-          if (warning) setJobDraft(job.jobNumber);
+        onChange={(event) => {
+          const next = event.target.value;
+          setJobDraft(next);
+          setJobWarning(jobNumberWarning(next, jobs, job.id));
         }}
-        aria-invalid={Boolean(warning)}
+        onBlur={commitJobNumber}
+        aria-invalid={Boolean(jobWarning)}
         placeholder="1851 or 17312-1"
         className={cn(
           "h-11 w-full rounded-sm border bg-background px-2.5 font-mono text-sm",
-          warning ? "border-danger" : "border-border",
+          jobWarning ? "border-danger" : "border-border",
         )}
       />
-      {warning ? <p className="text-xs font-semibold text-danger">{warning}</p> : null}
+      {jobWarning ? <p className="text-xs font-semibold text-danger">{jobWarning}</p> : null}
     </div>
   );
 }
+

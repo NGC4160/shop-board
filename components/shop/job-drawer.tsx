@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
@@ -8,6 +8,7 @@ import {
   CART_MAKES,
   PIPELINE_STATUSES,
   PRIMARY_TECHS,
+  PRIORITY_LABEL,
   PRIORITIES,
   STATUS_CHIP,
   cartLabel,
@@ -23,13 +24,6 @@ import { ComboCell } from "@/components/shop/combo-cell";
 import { formatStamp, agingLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const PRIORITY_LABEL: Record<Priority, string> = {
-  none: "No flag",
-  hot: "Hot",
-  promised: "Promised",
-  waiting: "Waiting",
-};
-
 type JobDrawerProps = {
   job: CartJob | null;
   onClose: () => void;
@@ -38,11 +32,13 @@ type JobDrawerProps = {
 };
 
 export function JobDrawer({ job, onClose, onChange, onAdvance }: JobDrawerProps) {
-  const [notes, setNotes] = useState(job?.notes ?? "");
-
-  useEffect(() => {
-    setNotes(job?.notes ?? "");
-  }, [job?.id, job?.notes]);
+  const notesValue = job?.notes ?? "";
+  const [notes, setNotes] = useState(notesValue);
+  const [seenNotes, setSeenNotes] = useState(notesValue);
+  if (notesValue !== seenNotes) {
+    setSeenNotes(notesValue);
+    setNotes(notesValue);
+  }
 
   const next = job ? nextPipelineStatus(job.status) : null;
   const prev = job ? prevPipelineStatus(job.status) : null;

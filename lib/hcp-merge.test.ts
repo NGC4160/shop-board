@@ -107,4 +107,25 @@ describe("mergeHcpJobs", () => {
     assert.equal(jobs.some((job) => job.jobNumber === "1842"), true);
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
   });
+
+  it("drops live Add-cart ghosts and does not keep epoch stage ages", () => {
+    const now = Date.parse("2026-09-09T12:00:00Z");
+    const sharon = {
+      ...seedJobs[1],
+      statusChangedAt: 0,
+      createdAt: 0,
+    };
+    const ghost = {
+      ...seedJobs[0],
+      id: "ghost-add",
+      customerName: "",
+      jobNumber: "",
+    };
+    const { jobs } = mergeHcpJobs([sharon, ghost], [], now);
+    assert.equal(jobs.some((job) => job.id === "ghost-add"), false);
+    assert.equal(jobs.some((job) => job.jobNumber === "1847"), true);
+    const kept = jobs.find((job) => job.jobNumber === "1847");
+    assert.ok(kept);
+    assert.ok(now - kept.statusChangedAt < 400 * 86_400_000);
+  });
 });

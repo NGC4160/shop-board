@@ -1,4 +1,4 @@
-import { type CartJob } from "@/lib/jobs";
+import { jobNumberError, normalizeJobNumber, type CartJob } from "@/lib/jobs";
 
 export function compareText(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
@@ -12,7 +12,10 @@ export type JobNumberParts = {
 
 /** Split `1842` / `17312-1` so 1842 sorts before 18510 and before 1842-1. */
 export function jobNumberParts(jobNumber: string): JobNumberParts {
-  const raw = jobNumber.trim();
+  const raw = normalizeJobNumber(jobNumber);
+  if (jobNumberError(raw)) {
+    return { major: Number.POSITIVE_INFINITY, minor: 0, raw: jobNumber };
+  }
   const match = raw.match(/^(\d+)(?:-(\d+))?$/);
   if (match) {
     return {
@@ -21,12 +24,7 @@ export function jobNumberParts(jobNumber: string): JobNumberParts {
       raw,
     };
   }
-  const digits = raw.replace(/\D/g, "");
-  return {
-    major: digits ? Number(digits) : Number.POSITIVE_INFINITY,
-    minor: 0,
-    raw,
-  };
+  return { major: Number.POSITIVE_INFINITY, minor: 0, raw };
 }
 
 export function jobNumberValue(jobNumber: string): number {
