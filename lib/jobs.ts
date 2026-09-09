@@ -504,11 +504,25 @@ export function jobNumberError(value: string): string | null {
   if (!JOB_NUMBER_PATTERN.test(normalized)) {
     return "Job # must be digits, or digits-hyphen-digits (like 17312-1)";
   }
+  const major = normalized.split("-")[0] ?? "";
+  if (/^0/.test(major)) {
+    return "Job # can't be zeros or start with 0";
+  }
   return null;
 }
 
 export function isValidJobNumber(value: string): boolean {
   return jobNumberError(value) === null;
+}
+
+/** Other… must not impersonate a listed option (e.g. typing In Progress as a custom status). */
+export function listedOtherError(value: string, options: readonly string[]): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (options.some((option) => option.toLowerCase() === trimmed.toLowerCase())) {
+    return "Pick it from the list";
+  }
+  return null;
 }
 
 export function isBlankIdentity(job: Pick<CartJob, "customerName" | "jobNumber">): boolean {
@@ -639,8 +653,25 @@ export function cartLabel(job: Pick<CartJob, "cartYear" | "cartMake" | "cartMode
   return [job.cartYear, job.cartMake, job.cartModel].filter(Boolean).join(" ");
 }
 
+const MAX_STAGE_MS = 730 * DAY;
+
+export function saneStatusChangedAt(
+  job: Pick<CartJob, "createdAt" | "updatedAt" | "statusChangedAt">,
+  now = Date.now(),
+): number {
+  const fallback =
+    Number.isFinite(job.createdAt) && job.createdAt > 0 && job.createdAt <= now
+      ? job.createdAt
+      : now;
+  const raw = job.statusChangedAt;
+  if (!Number.isFinite(raw) || raw <= 0 || raw > now) return fallback;
+  if (now - raw > MAX_STAGE_MS) return fallback;
+  return raw;
+}
+
 export function daysInStatus(job: CartJob, now = Date.now()): number {
-  return Math.max(0, Math.floor((now - job.statusChangedAt) / DAY));
+  const at = saneStatusChangedAt(job, now);
+  return Math.max(0, Math.floor((now - at) / DAY));
 }
 
 export function daysOnBoard(job: CartJob, now = Date.now()): number {
@@ -827,7 +858,14 @@ export function upgradeJob(value: unknown): CartJob | null {
     history,
     createdAt,
     updatedAt,
-    statusChangedAt:
-      typeof job.statusChangedAt === "number" ? job.statusChangedAt : updatedAt,
+    statusChangedAt: saneStatusChangedAt(
+      {
+        createdAt,
+        updatedAt,
+        statusChangedAt:
+          typeof job.statusChangedAt === "number" ? job.statusChangedAt : updatedAt,
+      },
+      Date.now(),
+    ),
   };
 }

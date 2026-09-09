@@ -15,6 +15,7 @@ import { toast, Toaster } from "sonner";
 import {
   customerNameError,
   hasDuplicateJobNumber,
+  isBlankIdentity,
   jobNumberError,
   PRIMARY_TECHS,
   isClosedStatus,
@@ -400,7 +401,14 @@ export function ShopApp() {
             onChange={onChange}
             onAdvance={onAdvance}
             onDelete={onDelete}
-            onOpen={setOpenId}
+            onOpen={(id) => {
+              if (draft && id === draft.id && isBlankIdentity(draft)) {
+                toast.error("Enter customer name and job # first");
+                setFocusId(draft.id);
+                return;
+              }
+              setOpenId(id);
+            }}
             focusId={focusId}
           />
         )}
@@ -413,7 +421,13 @@ export function ShopApp() {
 
       <JobDrawer
         job={openJob}
-        onClose={() => setOpenId(null)}
+        onClose={() => {
+          if (draft && openId === draft.id && isBlankIdentity(draft)) {
+            setDraft(null);
+            setFocusId(null);
+          }
+          setOpenId(null);
+        }}
         onChange={onChange}
         onAdvance={onAdvance}
       />

@@ -23,7 +23,7 @@ One dense table on one page. Rows are carts. Columns are fields. Every floor fie
 
 Tablet and phone keep the same table (horizontal scroll). Customer name and job # stay in the sticky left column; every other field is to the right. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
 
-Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers still must be digits or `17312-1`, and duplicates are blocked. Add cart inserts a blank line that is not stored until both identity fields are filled.
+Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers must be digits or `17312-1` — not `000` or leading zeros. Duplicates are blocked. Add cart is a draft until both identity fields are filled; a blank row is not stored and does not count as open. Status Other… cannot be an exact Housecall Pro pipeline name — pick that stage from the list.
 
 Primary tech, Status, Next action, Time, Bay, Make, and Color each have a **dropdown of known options plus Other… free text**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 

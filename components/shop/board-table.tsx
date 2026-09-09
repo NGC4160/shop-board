@@ -371,6 +371,7 @@ function IdentityFields({
     const error = customerNameError(trimmed);
     if (error) {
       setNameWarning(error);
+      setNameDraft(trimmed);
       return;
     }
     setNameWarning("");

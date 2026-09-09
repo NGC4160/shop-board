@@ -42,4 +42,16 @@ describe("job number sort", () => {
       ["1842", "18510", ""],
     );
   });
+
+  it("sends zero and leading-zero junk to the end", () => {
+    const sorted = sortJobsByJobNumber([
+      { ...seedJobs[0], id: "a", jobNumber: "000" },
+      { ...seedJobs[0], id: "b", jobNumber: "1842" },
+      { ...seedJobs[0], id: "c", jobNumber: "01842" },
+    ]);
+    assert.deepEqual(
+      sorted.map((job) => job.jobNumber),
+      ["1842", "000", "01842"],
+    );
+  });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { listedOtherError } from "@/lib/jobs";
 
 const OTHER_VALUE = "__other__";
 
@@ -95,14 +96,20 @@ export function ComboCell({
   };
 
   const commitText = (next: string) => {
-    const error = errorFor?.(next) ?? null;
+    const trimmed = next.trim();
+    const listed = listedOtherError(trimmed, options);
+    if (listed) {
+      setWarning(listed);
+      return;
+    }
+    const error = errorFor?.(trimmed) ?? null;
     if (error) {
       setWarning(error);
       return;
     }
     setWarning("");
     setPickedOther(false);
-    onChange(next);
+    onChange(trimmed);
   };
 
   const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -146,7 +153,7 @@ export function ComboCell({
             setTextDraft(event.target.value);
             setWarning("");
           }}
-          onBlur={() => commitText(textDraft.trim())}
+          onBlur={() => commitText(textDraft)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.currentTarget.blur();
