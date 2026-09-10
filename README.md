@@ -10,20 +10,18 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 
-One dense table on one page. Rows are carts. Columns are fields. Every floor field edits **inline** — customer, job #, flag, year / make / model / color, bay, tech, status, next action, time. No required edit modal. Add cart asks for customer + job # first; the row appears on the sheet only after both are valid.
+One dense table on one page. Rows are carts. Columns are fields. Every floor field edits **inline** — customer, job #, flag, year / make / model / color, bay, tech, status, next action, time. No required edit modal. There is no top chrome (no Add cart button, toolbar, stats cards, search, or filters). New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
 
-- **Stats strip:** open, hot, due today, parts, unassigned, stuck 3+ days
-- **Search** plus filters by tech, hot, due, parts, pickup, stale, closed
 - **Flags:** Hot / Promised / Waiting — tap the flag on the row, plus a left color bar
 - **Aging:** days in the current Housecall Pro stage
 - **Advance:** one tap moves the job to the next pipeline status
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
-- **Export / import JSON**, print, undo delete
-- **Keyboard:** `N` add cart, `/` search, `Esc` close notes
+- **Undo delete** after removing a row
+- **Keyboard:** `N` add cart locally, `Esc` close notes or abandon a blank add
 
-Tablet and phone keep the same table (horizontal scroll), with compact header/stats/filters so rows stay on screen. Customer name and job # stay in the sticky left column; a narrow sticky actions column keeps details and delete reachable. Every other field is to the right. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
+Tablet and phone keep the same table (horizontal scroll) with no header/stats/filters so rows stay on screen. Customer name and job # stay in the sticky left column; a narrow sticky actions column keeps details and delete reachable. Every other field is to the right. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
 
-Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers must be digits or `17312-1` — not `000` or leading zeros. Duplicates are blocked. Add cart / `N` opens a compact identity composer — not a board row. The cart only appears on the spreadsheet after both fields are valid. Tap away, Escape, or reload while it is still blank and it disappears. It is not stored and does not count as open. Status Other… cannot be an exact Housecall Pro pipeline name — pick that stage from the list.
+Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers must be digits or `17312-1` — not `000` or leading zeros. Duplicates are blocked. `N` opens a compact identity composer — not a board row. The cart only appears on the spreadsheet after both fields are valid. Tap away, Escape, or reload while it is still blank and it disappears. It is not stored and does not count as open. Status Other… cannot be an exact Housecall Pro pipeline name — pick that stage from the list.
 
 Primary tech, Status, Next action, Time, Bay, Make, and Color each have a **dropdown of known options plus Other… free text**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 
