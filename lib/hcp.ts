@@ -42,7 +42,9 @@ export type HcpSyncResult =
       fetchedAt: number;
     };
 
-const OPEN_QUERY_STATUSES = ["unscheduled", "scheduled", "in_progress"] as const;
+/** Conservative Jobs list query: page + page_size only. */
+export const HCP_JOBS_PAGE_SIZE = 100;
+export const HCP_JOBS_MAX_PAGES = 40;
 
 const CLOSED_WORK_STATUSES = new Set([
   "complete rated",
@@ -80,6 +82,23 @@ export function hcpBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   );
 }
 
+/**
+ * List URL using only page / page_size.
+ * Official Jobs OpenAPI documents those plus schedule / customer / employee
+ * filters. sort_by and repeated work_status= values are what HCP 400s on
+ * (Zapier: "work_status filter must be an array"); we filter open jobs after.
+ */
+export function buildHcpJobsListUrl(
+  baseUrl: string,
+  page: number,
+  pageSize = HCP_JOBS_PAGE_SIZE,
+): URL {
+  const url = new URL(`${baseUrl.replace(/\/+$/, "")}/jobs`);
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("page_size", String(pageSize));
+  return url;
+}
+
 function authHeaders(apiKey: string): Headers {
   const headers = new Headers({ Accept: "application/json" });
   const scheme = process.env.HOUSECALL_PRO_AUTH_SCHEME?.trim().toLowerCase();
@@ -102,6 +121,70 @@ function asString(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "";
+}
+
+function clipErrorText(value: string, max = 300): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith("<")) return "";
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
+}
+
+function errorsObjectDetail(errors: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(errors)) {
+    if (Array.isArray(value)) {
+      const msgs = value.map(asString).filter(Boolean).join(", ");
+      if (msgs) parts.push(`${key} ${msgs}`);
+    } else {
+      const msg = asString(value);
+      if (msg) parts.push(`${key} ${msg}`);
+    }
+  }
+  return parts.join("; ");
+}
+
+/** Pull a readable reason from HCP JSON / text bodies when present. */
+export function hcpErrorDetail(body: unknown): string {
+  if (typeof body === "string") return clipErrorText(body);
+  if (Array.isArray(body)) {
+    const parts = body.map(asString).filter(Boolean);
+    return parts.length ? clipErrorText(parts.join("; ")) : "";
+  }
+  const record = asRecord(body);
+  if (!record) return "";
+
+  const nestedError = asRecord(record.error);
+  const direct =
+    asString(record.error) ||
+    asString(record.message) ||
+    asString(record.error_description) ||
+    asString(record.detail) ||
+    asString(nestedError?.message) ||
+    asString(nestedError?.error);
+  if (direct) return clipErrorText(direct);
+
+  if (Array.isArray(record.errors)) {
+    const parts = record.errors.map(asString).filter(Boolean);
+    if (parts.length) return clipErrorText(parts.join("; "));
+  }
+  const errorsRecord = asRecord(record.errors);
+  if (errorsRecord) {
+    const fromObject = errorsObjectDetail(errorsRecord);
+    if (fromObject) return clipErrorText(fromObject);
+  }
+  return "";
+}
+
+export function formatHcpHttpError(
+  status: number,
+  statusText: string,
+  body: unknown,
+): string {
+  const prefix = `Housecall Pro ${status}${statusText ? ` ${statusText}` : ""}`;
+  const detail = hcpErrorDetail(body);
+  if (!detail) return prefix;
+  if (detail.toLowerCase().startsWith("housecall pro")) return detail;
+  return `${prefix}: ${detail}`;
 }
 
 function normalizeWorkStatus(value: string): string {
@@ -188,33 +271,28 @@ async function fetchJobsPage(
   baseUrl: string,
   apiKey: string,
   page: number,
-): Promise<{ jobs: unknown[]; totalPages: number }> {
-  const url = new URL(`${baseUrl}/jobs`);
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("page_size", "100");
-  url.searchParams.set("sort_by", "invoice_number");
-  url.searchParams.set("sort_direction", "asc");
-  for (const status of OPEN_QUERY_STATUSES) {
-    url.searchParams.append("work_status", status);
-  }
-
+): Promise<{ jobs: unknown[]; totalPages: number | null }> {
+  const url = buildHcpJobsListUrl(baseUrl, page);
   const response = await fetch(url, {
     headers: authHeaders(apiKey),
     cache: "no-store",
   });
-  const body = (await response.json().catch(() => null)) as unknown;
+  const rawText = await response.text().catch(() => "");
+  let body: unknown = null;
+  if (rawText) {
+    try {
+      body = JSON.parse(rawText) as unknown;
+    } catch {
+      body = rawText;
+    }
+  }
   if (!response.ok) {
-    const record = asRecord(body);
-    const message =
-      asString(record?.error) ||
-      asString(record?.message) ||
-      `Housecall Pro ${response.status} ${response.statusText}`;
-    throw new Error(message);
+    throw new Error(formatHcpHttpError(response.status, response.statusText, body));
   }
   const record = asRecord(body);
   const jobs = Array.isArray(record?.jobs) ? record.jobs : Array.isArray(body) ? body : [];
   const totalPages =
-    typeof record?.total_pages === "number" && record.total_pages > 0 ? record.total_pages : 1;
+    typeof record?.total_pages === "number" && record.total_pages > 0 ? record.total_pages : null;
   return { jobs, totalPages };
 }
 
@@ -238,13 +316,18 @@ export async function fetchHcpOpenJobs(
     const baseUrl = hcpBaseUrl(env);
     const collected: unknown[] = [];
     let page = 1;
-    let totalPages = 1;
-    do {
+    let pageCount = 0;
+
+    while (page <= HCP_JOBS_MAX_PAGES) {
       const result = await fetchJobsPage(baseUrl, apiKey, page);
       collected.push(...result.jobs);
-      totalPages = result.totalPages;
+      pageCount += 1;
+      const knownMore = result.totalPages != null && page < result.totalPages;
+      const inferredMore =
+        result.totalPages == null && result.jobs.length >= HCP_JOBS_PAGE_SIZE;
+      if (!knownMore && !inferredMore) break;
       page += 1;
-    } while (page <= totalPages && page <= 40);
+    }
 
     const jobs = collected
       .map(mapHcpJob)
@@ -255,7 +338,7 @@ export async function fetchHcpOpenJobs(
       skipped: false,
       jobs,
       fetchedAt,
-      pageCount: totalPages,
+      pageCount,
     };
   } catch (error) {
     return {
