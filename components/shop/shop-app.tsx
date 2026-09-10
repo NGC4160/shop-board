@@ -86,7 +86,7 @@ export function ShopApp() {
 
   const startDraft = useCallback(() => {
     if (draft) {
-      toast.error("Fill customer name and job # on the new row");
+      toast.error("Fill customer name and job # first");
       setFocusId(draft.id);
       return;
     }
@@ -411,6 +411,7 @@ export function ShopApp() {
               setDraft(null);
               setFocusId(null);
             }}
+            onAbandonBlank={abandonBlankDraft}
           />
         </div>
       ) : null}

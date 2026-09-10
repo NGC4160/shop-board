@@ -14,6 +14,7 @@ import {
   TIME_PRESETS,
   customerNameError,
   daysInStatus,
+  isBlankIdentity,
   isStale,
   jobNumberWarning,
   nextPipelineStatus,
@@ -104,7 +105,9 @@ export function BoardTable({
         </tr>
       </thead>
       <tbody>
-        {jobs.map((job) => {
+        {jobs
+          .filter((job) => !isBlankIdentity(job))
+          .map((job) => {
           const next = nextPipelineStatus(job.status);
           const due = isDueToday(job);
           const stale = isStale(job);
@@ -257,16 +260,30 @@ export function DraftComposer({
   jobs,
   onChange,
   onCancel,
+  onAbandonBlank,
 }: {
   job: CartJob;
   jobs: CartJob[];
   onChange: (id: string, patch: Partial<CartJob>) => boolean;
   onCancel: () => void;
+  onAbandonBlank: (id: string) => void;
 }) {
   return (
     <div
       data-draft-composer
       className="border-b border-accent/40 bg-surface-2 px-2 py-2 sm:px-3"
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (event.currentTarget.contains(next as Node)) return;
+        if (next instanceof Element && next.closest("[data-add-cart]")) return;
+        const host = event.currentTarget;
+        window.setTimeout(() => {
+          const active = document.activeElement;
+          if (host.contains(active)) return;
+          if (active instanceof Element && active.closest("[data-add-cart]")) return;
+          onAbandonBlank(job.id);
+        }, 0);
+      }}
     >
       <div className="flex items-start gap-1">
         <div className="min-w-0 flex-1">
@@ -430,6 +447,7 @@ function IdentityFields({
     const trimmed = nameDraft.trim();
     const error = customerNameError(trimmed);
     if (error) {
+      if (ephemeral && !jobDraft.trim()) return;
       setNameWarning(error);
       setNameDraft(trimmed);
       return;
@@ -440,6 +458,7 @@ function IdentityFields({
   };
 
   const commitJobNumber = () => {
+    if (ephemeral && !nameDraft.trim() && !jobDraft.trim()) return;
     const warning = jobNumberWarning(jobDraft, jobs, job.id);
     if (warning) {
       setJobWarning(warning);
