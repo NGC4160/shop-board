@@ -1,6 +1,6 @@
 import { applyHcpJobs, getBoardSnapshot } from "@/lib/board-store";
-import { shouldSyncHcpNow } from "@/lib/chicago";
 import type { HcpOpenJob } from "@/lib/hcp";
+import { shouldFetchHcpJobs } from "@/lib/hcp-merge";
 
 export type ClientHcpSyncResult = {
   ok: boolean;
@@ -21,9 +21,15 @@ type HcpApiResponse = {
 };
 
 let inflight: Promise<ClientHcpSyncResult> | null = null;
+/** One forced re-apply per page load after stale shop-as-customer names are merged. */
+let staleCompanyResyncDone = false;
 
 async function runHcpClientSync(): Promise<ClientHcpSyncResult> {
-  if (!shouldSyncHcpNow(getBoardSnapshot().lastHcpSyncAt)) {
+  // subscribeBoard hydrates localStorage on a microtask; wait so skip/force
+  // sees lastHcpSyncAt and any leftover "Neighborhood Golf Carts" names.
+  await Promise.resolve();
+  const snapshot = getBoardSnapshot();
+  if (!shouldFetchHcpJobs(snapshot.lastHcpSyncAt, snapshot.jobs, Date.now(), staleCompanyResyncDone)) {
     return {
       ok: true,
       skipped: true,
@@ -69,6 +75,7 @@ async function runHcpClientSync(): Promise<ClientHcpSyncResult> {
 
   const jobs = Array.isArray(body.jobs) ? body.jobs : [];
   const { added, updated } = applyHcpJobs(jobs);
+  staleCompanyResyncDone = true;
   return {
     ok: true,
     skipped: false,

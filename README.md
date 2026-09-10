@@ -94,6 +94,7 @@ Each shop tablet/TV then merges that job list into the local board:
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
 - Housecall Pro updates **job list, customer name, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**.
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented and do not blank a stored name.
+- If the board still has any customer name that is exactly `Neighborhood Golf Carts` (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
 - Local-only rows (blank add-cart lines, jobs not in the HCP open list) stay on the board.
 
 The public Jobs API’s `work_status` is coarse (`unscheduled` / `scheduled` / `in progress`). Custom pipeline columns such as “Awaiting QC” are applied only when HCP returns that exact name (tag or `pipeline_status`). Otherwise existing shop statuses are left alone; new jobs fall back to Unscheduled / Scheduled / In Progress.

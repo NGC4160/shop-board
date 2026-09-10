@@ -1,3 +1,4 @@
+import { shouldSyncHcpNow } from "@/lib/chicago";
 import {
   appendHistory,
   createId,
@@ -10,11 +11,37 @@ import {
 } from "@/lib/jobs";
 import type { HcpOpenJob } from "@/lib/hcp";
 
+/** Exact shop-as-customer string from the old company-first HCP mapping bug. */
+export const STALE_HCP_COMPANY_CUSTOMER = "Neighborhood Golf Carts";
+
 export type HcpMergeStats = {
   jobs: CartJob[];
   added: number;
   updated: number;
 };
+
+export function hasStaleHcpCompanyCustomerName(
+  jobs: readonly { customerName?: string | null }[],
+): boolean {
+  return jobs.some((job) => job.customerName === STALE_HCP_COMPANY_CUSTOMER);
+}
+
+/**
+ * Morning window from shouldSyncHcpNow, plus a one-shot bypass when the board
+ * still has the exact shop-as-customer bug string. After that re-apply,
+ * pass staleCompanyResyncDone so leftover real company rows do not refetch
+ * every minute.
+ */
+export function shouldFetchHcpJobs(
+  lastSyncAt: number | null | undefined,
+  jobs: readonly { customerName?: string | null }[],
+  now = Date.now(),
+  staleCompanyResyncDone = false,
+): boolean {
+  if (shouldSyncHcpNow(lastSyncAt, now)) return true;
+  if (staleCompanyResyncDone) return false;
+  return hasStaleHcpCompanyCustomerName(jobs);
+}
 
 function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
   const map = new Map<string, CartJob>();

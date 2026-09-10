@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { mergeHcpJobs } from "./hcp-merge.ts";
+import {
+  hasStaleHcpCompanyCustomerName,
+  mergeHcpJobs,
+  shouldFetchHcpJobs,
+  STALE_HCP_COMPANY_CUSTOMER,
+} from "./hcp-merge.ts";
 import { mapHcpJob } from "./hcp.ts";
 import { seedJobs } from "./jobs.ts";
 
@@ -121,6 +126,32 @@ describe("mergeHcpJobs", () => {
     assert.equal(added, 1);
     assert.equal(jobs.some((job) => job.jobNumber === "1842"), true);
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
+  });
+
+  it("treats only the exact shop company string as stale", () => {
+    assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: STALE_HCP_COMPANY_CUSTOMER }]), true);
+    assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: "neighborhood golf carts" }]), false);
+    assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: "Mike Landry" }]), false);
+    assert.equal(hasStaleHcpCompanyCustomerName([]), false);
+  });
+
+  it("fetches when already synced today if a stale shop company name is still on the board", () => {
+    const seven = Date.parse("2026-09-09T12:00:00.000Z");
+    const noon = Date.parse("2026-09-09T17:00:00.000Z");
+    assert.equal(
+      shouldFetchHcpJobs(seven, [{ customerName: STALE_HCP_COMPANY_CUSTOMER }], noon),
+      true,
+    );
+    assert.equal(shouldFetchHcpJobs(seven, [{ customerName: "Mike Landry" }], noon), false);
+    assert.equal(
+      shouldFetchHcpJobs(seven, [{ customerName: STALE_HCP_COMPANY_CUSTOMER }], noon, true),
+      false,
+    );
+    const sixFifty = Date.parse("2026-09-09T11:50:00.000Z");
+    assert.equal(
+      shouldFetchHcpJobs(seven, [{ customerName: STALE_HCP_COMPANY_CUSTOMER }], sixFifty),
+      true,
+    );
   });
 
   it("overwrites a stale shop-as-customer name when syncing by job number", () => {
