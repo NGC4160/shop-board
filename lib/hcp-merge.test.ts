@@ -44,6 +44,21 @@ describe("mapHcpJob", () => {
       null,
     );
   });
+
+  it("maps a person name even when HCP also sends the shop as company", () => {
+    const mapped = mapHcpJob({
+      id: "abc",
+      invoice_number: "173128",
+      work_status: "scheduled",
+      customer: {
+        first_name: "Mike",
+        last_name: "Landry",
+        company: "Neighborhood Golf Carts",
+      },
+    });
+    assert.equal(mapped?.jobNumber, "173128");
+    assert.equal(mapped?.customerName, "Mike Landry");
+  });
 });
 
 describe("mergeHcpJobs", () => {
@@ -106,6 +121,47 @@ describe("mergeHcpJobs", () => {
     assert.equal(added, 1);
     assert.equal(jobs.some((job) => job.jobNumber === "1842"), true);
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
+  });
+
+  it("overwrites a stale shop-as-customer name when syncing by job number", () => {
+    const local = [
+      {
+        ...seedJobs[0],
+        jobNumber: "173128",
+        customerName: "Neighborhood Golf Carts",
+      },
+    ];
+    const { jobs, updated } = mergeHcpJobs(local, [
+      {
+        hcpId: "hcp-173128",
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+        phone: "985-555-0142",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    assert.equal(updated, 1);
+    assert.equal(jobs[0].customerName, "Mike Landry");
+    assert.equal(jobs[0].jobNumber, "173128");
+  });
+
+  it("does not invent a customer name when HCP sends an empty one", () => {
+    const local = seedJobs.filter((job) => job.jobNumber === "1842");
+    const { jobs, updated } = mergeHcpJobs(local, [
+      {
+        hcpId: "hcp-1842",
+        jobNumber: "1842",
+        customerName: "  ",
+        phone: "",
+        status: "In Progress",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    assert.equal(updated, 0);
+    assert.equal(jobs[0].customerName, "Mike Landry");
   });
 
   it("drops live Add-cart ghosts and does not keep epoch stage ages", () => {

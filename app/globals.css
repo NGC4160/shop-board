@@ -141,49 +141,33 @@
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 70.25rem);
+    width: max(100%, 36rem);
   }
 
-  .board-col-id {
-    width: 10rem;
+  .board-col-customer {
+    width: 28%;
   }
 
-  .board-col-cart {
-    width: 10.5rem;
-  }
-
-  .board-col-bay {
-    width: 6.5rem;
+  .board-col-job {
+    width: 16%;
   }
 
   .board-col-tech {
-    width: 9rem;
+    width: 24%;
   }
 
   .board-col-status {
-    width: 11.5rem;
+    width: 32%;
   }
 
-  .board-col-next {
-    width: 10.5rem;
-  }
-
-  .board-col-time {
-    width: 9rem;
-  }
-
-  .board-col-actions {
-    width: 3.25rem;
-  }
-
-  .board-sticky-id {
+  .board-sticky-customer {
     position: sticky;
     left: 0;
     background: var(--color-surface);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
   }
 
-  .board-sticky-id-head {
+  .board-sticky-customer-head {
     position: sticky;
     top: 0;
     left: 0;
@@ -199,25 +183,9 @@
     background: var(--color-surface-2);
   }
 
-  .board-sticky-actions {
-    position: sticky;
-    right: 0;
-    background: var(--color-surface);
-    box-shadow: -6px 0 10px -8px rgba(0, 0, 0, 0.8);
-  }
-
-  .board-sticky-actions-head {
-    position: sticky;
-    top: 0;
-    right: 0;
-    z-index: 30;
-    background: var(--color-surface-2);
-    box-shadow: -6px 0 10px -8px rgba(0, 0, 0, 0.8);
-  }
-
   @media (min-width: 768px) {
-    .board-col-id {
-      width: 12rem;
+    .board-sheet {
+      width: 100%;
     }
   }
 }
@@ -233,22 +201,16 @@
   }
 
   .board-sheet,
-  .board-col-id,
-  .board-col-cart,
-  .board-col-bay,
+  .board-col-customer,
+  .board-col-job,
   .board-col-tech,
-  .board-col-status,
-  .board-col-next,
-  .board-col-time,
-  .board-col-actions {
+  .board-col-status {
     width: auto !important;
   }
 
-  .board-sticky-id,
-  .board-sticky-id-head,
-  .board-sticky-head,
-  .board-sticky-actions,
-  .board-sticky-actions-head {
+  .board-sticky-customer,
+  .board-sticky-customer-head,
+  .board-sticky-head {
     position: static !important;
     box-shadow: none !important;
   }

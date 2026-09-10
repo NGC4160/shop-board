@@ -121,8 +121,14 @@ export function getBoardSnapshot(): BoardSnapshot {
   return snapshot;
 }
 
+const serverSnapshot: BoardSnapshot = {
+  jobs: seedJobs,
+  prefs: defaultPrefs,
+  lastHcpSyncAt: null,
+};
+
 export function getServerBoardSnapshot(): BoardSnapshot {
-  return { jobs: seedJobs, prefs: defaultPrefs, lastHcpSyncAt: null };
+  return serverSnapshot;
 }
 
 function commit(next: BoardSnapshot, remember = false) {

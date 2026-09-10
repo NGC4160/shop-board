@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   buildHcpJobsListUrl,
+  customerNameFromHcp,
   fetchHcpOpenJobs,
   formatHcpHttpError,
   hcpErrorDetail,
   isOpenHcpWorkStatus,
+  jobNumberFromHcp,
   mapHcpJob,
 } from "./hcp.ts";
 
@@ -44,6 +46,78 @@ describe("buildHcpJobsListUrl", () => {
     assert.equal([...url.searchParams.keys()].sort().join(","), "page,page_size");
     assert.equal(url.search.includes("sort_"), false);
     assert.equal(url.search.includes("work_status"), false);
+  });
+});
+
+describe("customerNameFromHcp", () => {
+  it("prefers first + last name over company", () => {
+    assert.equal(
+      customerNameFromHcp({
+        first_name: "Mike",
+        last_name: "Landry",
+        company: "Neighborhood Golf Carts",
+        company_name: "Neighborhood Golf Carts",
+      }),
+      "Mike Landry",
+    );
+  });
+
+  it("uses a single person field when the other is blank", () => {
+    assert.equal(
+      customerNameFromHcp({ first_name: "Sharon", last_name: "", company: "Neighborhood Golf Carts" }),
+      "Sharon",
+    );
+    assert.equal(
+      customerNameFromHcp({ first_name: "", last_name: "Badeaux", company: "Acme" }),
+      "Badeaux",
+    );
+  });
+
+  it("uses company only when there is no person name", () => {
+    assert.equal(
+      customerNameFromHcp({
+        first_name: "",
+        last_name: "  ",
+        company: "The Landing HOA",
+        company_name: "Ignored when company is set",
+      }),
+      "The Landing HOA",
+    );
+    assert.equal(
+      customerNameFromHcp({ company_name: "Fairway Estates" }),
+      "Fairway Estates",
+    );
+  });
+
+  it("uses display_name / name only when there is no person", () => {
+    assert.equal(
+      customerNameFromHcp({
+        first_name: "James",
+        display_name: "Neighborhood Golf Carts",
+      }),
+      "James",
+    );
+    assert.equal(
+      customerNameFromHcp({ display_name: "Coach Williams", company: "NGC" }),
+      "Coach Williams",
+    );
+    assert.equal(customerNameFromHcp({ name: "Kayla Guidry" }), "Kayla Guidry");
+  });
+
+  it("leaves an empty customer empty — does not invent a name", () => {
+    assert.equal(customerNameFromHcp(null), "");
+    assert.equal(customerNameFromHcp(undefined), "");
+    assert.equal(customerNameFromHcp({}), "");
+    assert.equal(customerNameFromHcp({ first_name: "  ", last_name: "", company: "" }), "");
+  });
+});
+
+describe("jobNumberFromHcp", () => {
+  it("uses invoice_number as the shop-facing Housecall job #", () => {
+    assert.equal(jobNumberFromHcp({ invoice_number: "173128", job_number: "1842" }), "173128");
+    assert.equal(jobNumberFromHcp({ invoice_number: 173128 }), "173128");
+    assert.equal(jobNumberFromHcp({ job_number: "1842" }), "1842");
+    assert.equal(jobNumberFromHcp({}), "");
   });
 });
 
