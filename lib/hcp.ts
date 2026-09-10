@@ -197,12 +197,35 @@ export function isOpenHcpWorkStatus(workStatus: string): boolean {
   return !CLOSED_WORK_STATUSES.has(normalized);
 }
 
+/**
+ * Residential HCP customers often have the shop (or another company string)
+ * filled on the company fields. Prefer a real person when first or last name
+ * is present. Company is only used when there is no person name. Never invent.
+ */
 export function customerNameFromHcp(customer: unknown): string {
   const record = asRecord(customer);
   if (!record) return "";
-  const company = asString(record.company) || asString(record.company_name);
-  if (company) return company;
-  return [asString(record.first_name), asString(record.last_name)].filter(Boolean).join(" ");
+  const person = [asString(record.first_name), asString(record.last_name)]
+    .filter(Boolean)
+    .join(" ");
+  if (person) return person;
+  const labeled = asString(record.display_name) || asString(record.name);
+  if (labeled) return labeled;
+  return asString(record.company) || asString(record.company_name);
+}
+
+/**
+ * Shop-facing Housecall job # is `invoice_number` — the number HCP shows on
+ * the job/invoice in the shop. The public Jobs API has no separate customer-
+ * visible job number. `job_number` is only a fallback if a payload includes it.
+ *
+ * Live NGC invoices are currently 6-digit (e.g. 173128). Seed rows like 1839 /
+ * 1842 are local demo data, not a different HCP field.
+ */
+export function jobNumberFromHcp(job: unknown): string {
+  const record = asRecord(job);
+  if (!record) return "";
+  return normalizeJobNumber(asString(record.invoice_number) || asString(record.job_number));
 }
 
 export function phoneFromHcp(customer: unknown): string {
@@ -252,7 +275,7 @@ export function mapHcpJob(raw: unknown): HcpOpenJob | null {
   if (!job) return null;
   const workStatus = asString(job.work_status);
   if (workStatus && !isOpenHcpWorkStatus(workStatus)) return null;
-  const jobNumber = normalizeJobNumber(asString(job.invoice_number) || asString(job.job_number));
+  const jobNumber = jobNumberFromHcp(job);
   if (!jobNumber) return null;
   const pipeline = pipelineStatusFromJob(job);
   const mapped = WORK_STATUS_TO_PIPELINE[normalizeWorkStatus(workStatus)] ?? "New Job";

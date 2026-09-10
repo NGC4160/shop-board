@@ -10,22 +10,37 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 
-One dense table on one page. Rows are carts. Columns are fields. Every floor field edits **inline** — customer, job #, flag, year / make / model / color, bay, tech, status, next action, time. No required edit modal. There is no top chrome (no Add cart button, toolbar, stats cards, search, or filters). New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
+One dense table on one page. Rows are jobs. Columns are only these four fields, in this order, always sorted by job number ascending:
 
-- **Flags:** Hot / Promised / Waiting — tap the flag on the row, plus a left color bar
-- **Aging:** days in the current Housecall Pro stage
-- **Advance:** one tap moves the job to the next pipeline status
+1. **Customer name**
+2. **Job number**
+3. **Primary tech**
+4. **Current Status** (Housecall Pro Jobs pipeline dropdown)
+
+Every floor field edits **inline**. There is no top chrome (no Add cart button, toolbar, stats cards, search, or filters), no cart / bay / next-action / time / notes / phone columns, and no details drawer. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
+
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
-- **Undo delete** after removing a row
-- **Keyboard:** `N` add cart locally, `Esc` close notes or abandon a blank add
+- **Keyboard:** `N` add cart locally, `Esc` abandon a blank add
 
-Tablet and phone keep the same table (horizontal scroll) with no header/stats/filters so rows stay on screen. Customer name and job # stay in the sticky left column; a narrow sticky actions column keeps details and delete reachable. Every other field is to the right. Notes, phone, and activity are optional extras in a side drawer. Floor work does not require opening it.
+Tablet and phone keep the same table (horizontal scroll if needed) so rows stay readable. Customer name stays sticky on the left.
 
-Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers must be digits or `17312-1` — not `000` or leading zeros. Duplicates are blocked. `N` opens a compact identity composer — not a board row. The cart only appears on the spreadsheet after both fields are valid. Tap away, Escape, or reload while it is still blank and it disappears. It is not stored and does not count as open. Status Other… cannot be an exact Housecall Pro pipeline name — pick that stage from the list.
+Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers must be digits or `17312-1` — not `000` or leading zeros. Duplicates are blocked. `N` opens a compact identity composer — not a board row. The cart only appears on the spreadsheet after both fields are valid. Tap away, Escape, or reload while it is still blank and it disappears. It is not stored. Status Other… cannot be an exact Housecall Pro pipeline name — pick that stage from the list.
 
-Primary tech, Status, Next action, Time, Bay, Make, and Color each have a **dropdown of known options plus Other… free text**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
+Primary tech and Current Status each have a **dropdown of known options plus Other… free text**. Status dropdown is the full Housecall Pro pipeline; Primary tech dropdown is Field Techs + Unassigned.
 
-Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status / next / time, and no Pipeline / A–Z status sort toggles. Status still edits inline.
+Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status.
+
+## Customer names from Housecall Pro
+
+`customerNameFromHcp` prefers `first_name` + `last_name` when either is present. It uses `company` / `company_name` only when there is no person name (then `display_name` / `name` if HCP sent those). It never invents a name.
+
+Residential customers often have the shop filled as company, which previously made every row show **Neighborhood Golf Carts**. Morning sync overwrites the board customer name by job number when HCP sends a real name, so those stale rows get corrected.
+
+## Job numbers
+
+The board job # is Housecall Pro’s **`invoice_number`** — the number HCP shows on the job/invoice in the shop. The public Jobs API has no separate customer-visible job number. `job_number` is only a fallback if a payload includes it. We do not use the HCP UUID `id`.
+
+Live NGC invoices are currently **6-digit** (for example `173128`). The 4-digit examples on the local seed board (`1839`, `1842`) are demo data, not a different HCP field.
 
 ## Primary tech
 
@@ -77,8 +92,8 @@ Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handl
 Each shop tablet/TV then merges that job list into the local board:
 
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
-- Housecall Pro updates **job list, customer, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**.
-- Tech-entered **next action, time expectation, notes, bay, cart, flags, and assigned tech** are kept.
+- Housecall Pro updates **job list, customer name, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**.
+- Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented and do not blank a stored name.
 - Local-only rows (blank add-cart lines, jobs not in the HCP open list) stay on the board.
 
 The public Jobs API’s `work_status` is coarse (`unscheduled` / `scheduled` / `in progress`). Custom pipeline columns such as “Awaiting QC” are applied only when HCP returns that exact name (tag or `pipeline_status`). Otherwise existing shop statuses are left alone; new jobs fall back to Unscheduled / Scheduled / In Progress.

@@ -27,8 +27,10 @@ function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
 
 /**
  * Merge Housecall Pro open jobs into the local board by job number.
- * Updates customer / phone / (pipeline) status from HCP.
- * Keeps tech-entered next action, time expectation, notes, bay, cart, flags.
+ * HCP customer names overwrite existing board names (so stale values like
+ * "Neighborhood Golf Carts" get corrected). Empty HCP names are not invented
+ * and do not blank a stored name. Phone / pipeline status still update from
+ * HCP. Tech-entered next action, time, notes, bay, cart, flags stay.
  */
 export function mergeHcpJobs(
   local: CartJob[],
@@ -76,7 +78,8 @@ export function mergeHcpJobs(
 
     const nextStatus =
       hcp.statusIsPipeline || !existing.status ? hcp.status : existing.status;
-    const nextCustomer = hcp.customerName || existing.customerName;
+    const incomingName = hcp.customerName.trim();
+    const nextCustomer = incomingName || existing.customerName;
     const nextPhone = hcp.phone || existing.phone;
     const statusChanged = nextStatus !== existing.status;
     const customerChanged = nextCustomer !== existing.customerName;

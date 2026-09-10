@@ -12,20 +12,15 @@ import {
 } from "@/lib/jobs";
 import {
   createDraftJob,
-  advanceJob,
-  deleteJob,
   getBoardSnapshot,
   getServerBoardSnapshot,
   insertJob,
   subscribeBoard,
-  undoDelete,
   updateJob,
 } from "@/lib/board-store";
 import { sortJobsByJobNumber } from "@/lib/sort";
 import { startHcpMorningSync, type ClientHcpSyncResult } from "@/lib/hcp-client";
 import { BoardTable, DraftComposer } from "@/components/shop/board-table";
-import { JobDrawer } from "@/components/shop/job-drawer";
-import { formatClock } from "@/lib/format";
 
 export function ShopApp() {
   const board = useSyncExternalStore(
@@ -33,7 +28,6 @@ export function ShopApp() {
     getBoardSnapshot,
     getServerBoardSnapshot,
   );
-  const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CartJob | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -71,7 +65,6 @@ export function ShopApp() {
       return null;
     });
     setFocusId((focus) => (focus === id ? null : focus));
-    setOpenId((open) => (open === id ? null : open));
   }, []);
 
   useEffect(() => {
@@ -87,12 +80,9 @@ export function ShopApp() {
         event.preventDefault();
         startDraft();
       }
-      if (event.key === "Escape") {
-        setOpenId(null);
-        if (draft && isBlankIdentity(draft)) {
-          setDraft(null);
-          setFocusId(null);
-        }
+      if (event.key === "Escape" && draft && isBlankIdentity(draft)) {
+        setDraft(null);
+        setFocusId(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -113,9 +103,6 @@ export function ShopApp() {
   }, [draft, abandonBlankDraft]);
 
   const visible = useMemo(() => sortJobsByJobNumber(board.jobs), [board.jobs]);
-  const openJob =
-    board.jobs.find((job) => job.id === openId) ??
-    (draft && draft.id === openId ? draft : null);
 
   const onChange = (id: string, patch: Partial<CartJob>) => {
     if (draft && id === draft.id) {
@@ -152,30 +139,6 @@ export function ShopApp() {
     return updateJob(id, patch);
   };
 
-  const onDelete = (id: string) => {
-    if (openId === id) setOpenId(null);
-    if (draft && id === draft.id) {
-      setDraft(null);
-      setFocusId(null);
-      toast("Cart removed");
-      return;
-    }
-    deleteJob(id);
-    toast("Cart removed", {
-      action: {
-        label: "Undo",
-        onClick: () => {
-          undoDelete();
-        },
-      },
-    });
-  };
-
-  const onAdvance = (id: string) => {
-    const next = advanceJob(id);
-    if (next) toast(`Moved to ${next}`);
-  };
-
   return (
     <div className="shop-shell flex flex-col bg-background text-foreground">
       <Toaster
@@ -202,7 +165,7 @@ export function ShopApp() {
 
       <main className="board-scroll min-h-0 flex-1">
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
-          NGC Shop Board · {formatClock(Date.now())}
+          NGC Shop Board
         </p>
         <p className="sr-only">Spreadsheet · sorted by job number</p>
 
@@ -219,22 +182,10 @@ export function ShopApp() {
             jobs={visible}
             allJobs={board.jobs}
             onChange={onChange}
-            onAdvance={onAdvance}
-            onDelete={onDelete}
-            onOpen={setOpenId}
             focusId={focusId}
           />
         )}
       </main>
-
-      <JobDrawer
-        job={openJob}
-        onClose={() => {
-          setOpenId(null);
-        }}
-        onChange={onChange}
-        onAdvance={onAdvance}
-      />
     </div>
   );
 }
