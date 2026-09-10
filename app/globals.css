@@ -141,23 +141,23 @@
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 42rem);
+    width: max(100%, 36rem);
   }
 
   .board-col-customer {
-    width: 11rem;
+    width: 28%;
   }
 
   .board-col-job {
-    width: 7.5rem;
+    width: 16%;
   }
 
   .board-col-tech {
-    width: 9.5rem;
+    width: 24%;
   }
 
   .board-col-status {
-    width: 14rem;
+    width: 32%;
   }
 
   .board-sticky-customer {
@@ -184,16 +184,8 @@
   }
 
   @media (min-width: 768px) {
-    .board-col-customer {
-      width: 16rem;
-    }
-
-    .board-col-job {
-      width: 8.5rem;
-    }
-
-    .board-col-status {
-      width: 16rem;
+    .board-sheet {
+      width: 100%;
     }
   }
 }
