@@ -41,7 +41,7 @@ import { CHIP_FILTERS, CHIP_LABELS, boardStats, countChip, jobMatches, type Chip
 import { sortJobsByJobNumber } from "@/lib/sort";
 import { startHcpMorningSync, type ClientHcpSyncResult } from "@/lib/hcp-client";
 import { CartMark } from "@/components/shop/cart-mark";
-import { BoardTable } from "@/components/shop/board-table";
+import { BoardTable, DraftComposer } from "@/components/shop/board-table";
 import { JobDrawer } from "@/components/shop/job-drawer";
 import { formatClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -93,8 +93,16 @@ export function ShopApp() {
     const job = createDraftJob();
     setDraft(job);
     setFocusId(job.id);
-    toast("Blank row added — enter customer and job #");
   }, [draft]);
+
+  const abandonBlankDraft = useCallback((id: string) => {
+    setDraft((current) => {
+      if (!current || current.id !== id || !isBlankIdentity(current)) return current;
+      return null;
+    });
+    setFocusId((focus) => (focus === id ? null : focus));
+    setOpenId((open) => (open === id ? null : open));
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -113,21 +121,40 @@ export function ShopApp() {
         event.preventDefault();
         startDraft();
       }
-      if (event.key === "Escape") setOpenId(null);
+      if (event.key === "Escape") {
+        setOpenId(null);
+        if (draft && isBlankIdentity(draft)) {
+          setDraft(null);
+          setFocusId(null);
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [startDraft]);
+  }, [startDraft, draft]);
 
-  const visible = useMemo(() => {
-    const saved = sortJobsByJobNumber(
-      board.jobs.filter((job) =>
-        jobMatches(job, { search, tech, chip, hideClosed: board.prefs.hideClosed }, now),
+  useEffect(() => {
+    const current = draft;
+    if (!current || !isBlankIdentity(current)) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-draft-composer], [data-add-cart]")) return;
+      abandonBlankDraft(current.id);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [draft, abandonBlankDraft]);
+
+  const visible = useMemo(
+    () =>
+      sortJobsByJobNumber(
+        board.jobs.filter((job) =>
+          jobMatches(job, { search, tech, chip, hideClosed: board.prefs.hideClosed }, now),
+        ),
       ),
-    );
-    if (!draft) return saved;
-    return [draft, ...saved.filter((job) => job.id !== draft.id)];
-  }, [board.jobs, search, tech, chip, board.prefs.hideClosed, now, draft]);
+    [board.jobs, search, tech, chip, board.prefs.hideClosed, now],
+  );
   const stats = useMemo(() => boardStats(board.jobs, now), [board.jobs, now]);
   const openJob =
     board.jobs.find((job) => job.id === openId) ??
@@ -211,7 +238,7 @@ export function ShopApp() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-background text-foreground">
+    <div className="shop-shell flex flex-col bg-background text-foreground">
       <Toaster
         theme="dark"
         position="bottom-right"
@@ -219,95 +246,91 @@ export function ShopApp() {
           className: "bg-surface-2 text-foreground border border-border",
         }}
       />
-      <header className="no-print border-b border-border bg-surface px-3 py-4 sm:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex items-start gap-3">
-            <CartMark className="mt-1 size-9 text-accent" />
-            <div>
-              <p className="font-display text-xs font-semibold tracking-[0.2em] text-accent uppercase">
-                Covington, LA
-              </p>
-              <h1 className="mt-0.5 font-display text-3xl font-semibold tracking-tight sm:text-4xl">
-                Shop Board
-              </h1>
-              <p className="mt-1 text-sm text-muted">
-                Neighborhood Golf Carts · Housecall Pro jobs on the floor
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="mr-2 font-display text-2xl font-semibold tabular-nums tracking-tight">
-              {formatClock(now)}
+      <header className="no-print shrink-0 border-b border-border bg-surface px-2 py-2 sm:px-4 sm:py-3">
+        <div className="flex items-center gap-2">
+          <CartMark className="size-7 shrink-0 text-accent sm:size-8" />
+          <div className="min-w-0 flex-1">
+            <p className="hidden font-display text-xs font-semibold tracking-[0.2em] text-accent uppercase sm:block">
+              Covington, LA
             </p>
-            <button
-              type="button"
-              onClick={() => startDraft()}
-              className="inline-flex h-11 items-center gap-2 rounded-sm bg-accent px-4 text-sm font-semibold text-accent-ink"
-            >
-              <Plus className="size-4" />
-              Add cart
-            </button>
-            <Link
-              href="/wall"
-              className="inline-flex h-11 items-center gap-2 rounded-sm border border-border px-3 text-sm font-medium"
-            >
-              <Monitor className="size-4" />
-              Wall
-            </Link>
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex h-11 items-center justify-center rounded-sm border border-border px-3"
-              title="Print"
-            >
-              <Printer className="size-4" />
-              <span className="sr-only">Print</span>
-            </button>
-            <button
-              type="button"
-              onClick={exportBoard}
-              className="inline-flex h-11 items-center justify-center rounded-sm border border-border px-3"
-              title="Export"
-            >
-              <Download className="size-4" />
-              <span className="sr-only">Export</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="inline-flex h-11 items-center justify-center rounded-sm border border-border px-3"
-              title="Import"
-            >
-              <Upload className="size-4" />
-              <span className="sr-only">Import</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                loadSampleBoard();
-                toast("Sample board loaded");
-              }}
-              className="inline-flex h-11 items-center justify-center rounded-sm border border-border px-3"
-              title="Load sample board"
-            >
-              <RotateCcw className="size-4" />
-              <span className="sr-only">Load sample board</span>
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void onImport(file);
-                event.target.value = "";
-              }}
-            />
+            <h1 className="font-display text-xl leading-none font-semibold tracking-tight sm:text-3xl">
+              Shop Board
+            </h1>
           </div>
+          <p className="font-display text-lg font-semibold tabular-nums tracking-tight sm:text-2xl">
+            {formatClock(now)}
+          </p>
+        </div>
+        <div className="mt-2 flex items-center gap-1 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => startDraft()}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-sm bg-accent px-3 text-sm font-semibold text-accent-ink sm:px-4"
+            data-add-cart
+          >
+            <Plus className="size-4" />
+            Add cart
+          </button>
+          <Link
+            href="/wall"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-border sm:w-auto sm:gap-2 sm:px-3"
+          >
+            <Monitor className="size-4" />
+            <span className="sr-only sm:not-sr-only sm:text-sm sm:font-medium">Wall</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-border"
+            title="Print"
+          >
+            <Printer className="size-4" />
+            <span className="sr-only">Print</span>
+          </button>
+          <button
+            type="button"
+            onClick={exportBoard}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-border"
+            title="Export"
+          >
+            <Download className="size-4" />
+            <span className="sr-only">Export</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-border"
+            title="Import"
+          >
+            <Upload className="size-4" />
+            <span className="sr-only">Import</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              loadSampleBoard();
+              toast("Sample board loaded");
+            }}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-border"
+            title="Load sample board"
+          >
+            <RotateCcw className="size-4" />
+            <span className="sr-only">Load sample board</span>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void onImport(file);
+              event.target.value = "";
+            }}
+          />
         </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <dl className="mt-2 grid grid-cols-3 gap-1 sm:grid-cols-6 sm:gap-2">
           <Stat label="Open" value={stats.open} />
           <Stat label="Hot" value={stats.hot} warn={stats.hot > 0} />
           <Stat label="Due today" value={stats.due} warn={stats.due > 0} />
@@ -317,8 +340,8 @@ export function ShopApp() {
         </dl>
       </header>
 
-      <div className="no-print border-b border-border bg-surface px-3 py-3 sm:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="no-print shrink-0 border-b border-border bg-surface px-2 py-2 sm:px-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
           <label className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
             <input
@@ -326,15 +349,15 @@ export function ShopApp() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search customer, job #, cart, notes"
-              className="h-11 w-full rounded-sm border border-border bg-background pr-3 pl-10 text-sm"
+              className="h-11 w-full rounded-sm border border-border bg-background pr-3 pl-10 text-base md:text-sm"
             />
           </label>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto">
             <select
               aria-label="Filter by tech"
               value={tech}
               onChange={(event) => setTech(event.target.value)}
-              className="h-11 rounded-sm border border-border bg-background px-3 text-sm"
+              className="h-11 min-w-36 rounded-sm border border-border bg-background px-3 text-base md:text-sm"
             >
               <option value="">All techs</option>
               <option value="__none__">Unassigned</option>
@@ -344,7 +367,7 @@ export function ShopApp() {
                 </option>
               ))}
             </select>
-            <label className="inline-flex h-11 items-center gap-2 rounded-sm border border-border px-3 text-sm">
+            <label className="inline-flex h-11 shrink-0 items-center gap-2 rounded-sm border border-border px-3 text-sm">
               <input
                 type="checkbox"
                 checked={board.prefs.hideClosed}
@@ -355,7 +378,7 @@ export function ShopApp() {
             </label>
           </div>
         </div>
-        <div className="mt-3 flex gap-1 overflow-x-auto pb-1">
+        <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5">
           {CHIP_FILTERS.map((item) => {
             const count = countChip(board.jobs, item, now);
             return (
@@ -378,16 +401,28 @@ export function ShopApp() {
         </div>
       </div>
 
-      <main className="flex-1 px-2 py-3 sm:px-4">
-        <p className="print-only mb-3 font-display text-2xl font-semibold">
+      {draft ? (
+        <div className="no-print shrink-0">
+          <DraftComposer
+            job={draft}
+            jobs={board.jobs}
+            onChange={onChange}
+            onCancel={() => {
+              setDraft(null);
+              setFocusId(null);
+            }}
+          />
+        </div>
+      ) : null}
+
+      <main className="board-scroll min-h-0 flex-1">
+        <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
           NGC Shop Board · {formatClock(now)}
         </p>
-        <p className="mb-3 text-xs font-semibold tracking-wide text-muted uppercase">
-          Spreadsheet · sorted by job number
-        </p>
+        <p className="sr-only">Spreadsheet · sorted by job number</p>
 
         {visible.length === 0 ? (
-          <div className="rounded-lg border border-border bg-surface px-6 py-16 text-center">
+          <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
             <p className="font-display text-2xl font-semibold">No carts match</p>
             <p className="mt-2 text-sm text-muted">
               {board.jobs.length === 0 && !draft
@@ -398,22 +433,15 @@ export function ShopApp() {
         ) : (
           <BoardTable
             jobs={visible}
-            allJobs={draft ? [draft, ...board.jobs] : board.jobs}
+            allJobs={board.jobs}
             onChange={onChange}
             onAdvance={onAdvance}
             onDelete={onDelete}
-            onOpen={(id) => {
-              if (draft && id === draft.id && isBlankIdentity(draft)) {
-                toast.error("Enter customer name and job # first");
-                setFocusId(draft.id);
-                return;
-              }
-              setOpenId(id);
-            }}
+            onOpen={setOpenId}
             focusId={focusId}
           />
         )}
-        <p className="no-print mt-4 text-sm text-subtle">
+        <p className="no-print hidden px-3 py-2 text-sm text-subtle sm:block">
           {visible.filter((job) => !isClosedStatus(job.status)).length} showing · {stats.open} open ·{" "}
           {stats.total} total · Press <kbd className="rounded-sm border border-border px-1">N</kbd> to
           add · <kbd className="rounded-sm border border-border px-1">/</kbd> to search
@@ -423,10 +451,6 @@ export function ShopApp() {
       <JobDrawer
         job={openJob}
         onClose={() => {
-          if (draft && openId === draft.id && isBlankIdentity(draft)) {
-            setDraft(null);
-            setFocusId(null);
-          }
           setOpenId(null);
         }}
         onChange={onChange}
@@ -446,11 +470,13 @@ function Stat({
   warn?: boolean;
 }) {
   return (
-    <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-      <dt className="text-xs font-semibold tracking-wide text-muted uppercase">{label}</dt>
+    <div className="rounded-md border border-border bg-surface-2 px-2 py-1 sm:px-3 sm:py-2">
+      <dt className="text-[10px] leading-tight font-semibold tracking-wide text-muted uppercase sm:text-xs">
+        {label}
+      </dt>
       <dd
         className={cn(
-          "font-display text-2xl font-semibold tabular-nums tracking-tight",
+          "font-display text-lg leading-tight font-semibold tabular-nums tracking-tight sm:text-2xl",
           warn && value > 0 ? "text-danger" : "text-foreground",
         )}
       >

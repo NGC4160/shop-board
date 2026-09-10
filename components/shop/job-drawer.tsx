@@ -47,7 +47,7 @@ export function JobDrawer({ job, onClose, onChange, onAdvance }: JobDrawerProps)
     <Dialog.Root open={Boolean(job)} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="no-print fixed inset-0 z-40 bg-background/70 data-[state=open]:animate-in" />
-        <Dialog.Content className="no-print fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-[var(--shadow-lift)] sm:rounded-l-lg">
+        <Dialog.Content className="no-print fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-[var(--shadow-lift)] max-sm:inset-0 max-sm:border-0 sm:rounded-l-lg">
           {job ? (
             <>
               <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
