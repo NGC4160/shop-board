@@ -7,6 +7,7 @@ import {
   insertJob,
   loadSampleBoard,
   replaceBoard,
+  updateJob,
 } from "./board-store.ts";
 import { boardStats } from "./filters.ts";
 import { isBlankIdentity, seedJobs } from "./jobs.ts";
@@ -48,6 +49,34 @@ describe("Add cart ghost", () => {
     };
     assert.equal(insertJob(draft), true);
     assert.equal(getBoardSnapshot().jobs.length, before + 1);
+  });
+});
+
+describe("timeframe date", () => {
+  it("stores an ISO date and can clear it", () => {
+    loadSampleBoard();
+    const id = getBoardSnapshot().jobs[0].id;
+    assert.equal(updateJob(id, { timeExpectation: "2026-09-18" }), true);
+    assert.equal(
+      getBoardSnapshot().jobs.find((job) => job.id === id)?.timeExpectation,
+      "2026-09-18",
+    );
+    assert.equal(updateJob(id, { timeExpectation: "" }), true);
+    assert.equal(
+      getBoardSnapshot().jobs.find((job) => job.id === id)?.timeExpectation,
+      "",
+    );
+  });
+
+  it("does not persist leftover phrases or junk numbers", () => {
+    loadSampleBoard();
+    const id = getBoardSnapshot().jobs[0].id;
+    assert.equal(updateJob(id, { timeExpectation: "2026-09-18" }), true);
+    assert.equal(updateJob(id, { timeExpectation: "999" }), true);
+    assert.equal(
+      getBoardSnapshot().jobs.find((job) => job.id === id)?.timeExpectation,
+      "",
+    );
   });
 });
 

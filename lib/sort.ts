@@ -1,4 +1,4 @@
-import { jobNumberError, normalizeJobNumber, type CartJob } from "@/lib/jobs";
+import { isIsoDate, jobNumberError, normalizeJobNumber, type CartJob } from "@/lib/jobs";
 
 export function compareText(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
@@ -120,12 +120,9 @@ export function chicagoDayKey(ms: number): string {
 }
 
 export function isDueToday(job: CartJob, now = Date.now()): boolean {
-  const text = job.timeExpectation.trim().toLowerCase();
-  if (!text) return false;
-  if (/\btoday\b/.test(text) || /\bready now\b/.test(text)) return true;
-  const parsed = parseTimeExpectation(job.timeExpectation, now);
-  if (parsed === null) return false;
-  return chicagoDayKey(parsed) === chicagoDayKey(now);
+  const iso = job.timeExpectation.trim();
+  if (!isIsoDate(iso)) return false;
+  return iso === chicagoDayKey(now);
 }
 
 export function compareJobsByNumber(a: CartJob, b: CartJob): number {

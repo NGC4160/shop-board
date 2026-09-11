@@ -57,7 +57,7 @@ function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
  * HCP customer names overwrite existing board names (so stale values like
  * "Neighborhood Golf Carts" get corrected). Empty HCP names are not invented
  * and do not blank a stored name. Phone / pipeline status still update from
- * HCP. Tech-entered next action, time, notes, bay, cart, flags stay.
+ * HCP. Tech-entered next action, local Timeframe date, notes, bay, cart, flags stay.
  */
 export function mergeHcpJobs(
   local: CartJob[],

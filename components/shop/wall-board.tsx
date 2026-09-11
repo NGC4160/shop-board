@@ -5,6 +5,7 @@ import {
   PIPELINE_STATUSES,
   STATUS_CHIP,
   cartLabel,
+  formatTimeframe,
   isClosedStatus,
   statusTone,
   type CartJob,
@@ -105,7 +106,9 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
                       </p>
                       <p className="mt-1 text-sm text-foreground">
                         {job.nextAction || "No next action"}
-                        {job.timeExpectation ? ` · ${job.timeExpectation}` : ""}
+                        {job.timeExpectation
+                          ? ` · ${formatTimeframe(job.timeExpectation) || job.timeExpectation}`
+                          : ""}
                       </p>
                     </li>
                   ))}

@@ -141,23 +141,37 @@
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 36rem);
+    width: max(100%, 48rem);
   }
 
   .board-col-customer {
-    width: 28%;
+    width: 22%;
   }
 
   .board-col-job {
-    width: 16%;
+    width: 14%;
   }
 
   .board-col-tech {
-    width: 24%;
+    width: 20%;
   }
 
   .board-col-status {
-    width: 32%;
+    width: 26%;
+  }
+
+  .board-col-timeframe {
+    width: 18%;
+  }
+
+  .board-date {
+    color-scheme: dark;
+  }
+
+  .board-date::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.85;
+    filter: invert(1);
   }
 
   .board-sticky-customer {
@@ -204,7 +218,8 @@
   .board-col-customer,
   .board-col-job,
   .board-col-tech,
-  .board-col-status {
+  .board-col-status,
+  .board-col-timeframe {
     width: auto !important;
   }
 

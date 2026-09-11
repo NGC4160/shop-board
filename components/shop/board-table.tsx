@@ -7,6 +7,8 @@ import {
   PRIMARY_TECHS,
   STATUS_CHIP,
   customerNameError,
+  formatTimeframe,
+  isIsoDate,
   jobNumberWarning,
   normalizeJobNumber,
   statusTone,
@@ -36,6 +38,7 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
         <col className="board-col-job" />
         <col className="board-col-tech" />
         <col className="board-col-status" />
+        <col className="board-col-timeframe" />
       </colgroup>
       <thead className="text-sm">
         <tr>
@@ -50,6 +53,9 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
             <ColumnLabel>Current Status</ColumnLabel>
+          </th>
+          <th className="board-sticky-head border-b border-border px-1 py-1">
+            <ColumnLabel>Timeframe</ColumnLabel>
           </th>
         </tr>
       </thead>
@@ -85,6 +91,9 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
                 selectClassName={cn("font-semibold", STATUS_CHIP[statusTone(job.status)])}
                 onChange={(status) => onChange(job.id, { status })}
               />
+            </td>
+            <td className="border-b border-border px-1 py-1">
+              <TimeframeField job={job} onChange={onChange} />
             </td>
           </tr>
         ))}
@@ -129,6 +138,43 @@ export function DraftComposer({
           <span className="sr-only">Cancel new cart</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+function TimeframeField({
+  job,
+  onChange,
+}: {
+  job: CartJob;
+  onChange: (id: string, patch: Partial<CartJob>) => boolean;
+}) {
+  const iso = isIsoDate(job.timeExpectation) ? job.timeExpectation : "";
+  const readable = formatTimeframe(iso);
+
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <input
+        type="date"
+        aria-label="Timeframe"
+        title={readable || "Choose a date"}
+        value={iso}
+        onChange={(event) => {
+          onChange(job.id, { timeExpectation: event.target.value });
+        }}
+        className="board-date h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2 text-base md:text-sm"
+      />
+      {iso ? (
+        <button
+          type="button"
+          onClick={() => onChange(job.id, { timeExpectation: "" })}
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-border"
+          title="Clear timeframe"
+        >
+          <X className="size-4" />
+          <span className="sr-only">Clear timeframe</span>
+        </button>
+      ) : null}
     </div>
   );
 }
