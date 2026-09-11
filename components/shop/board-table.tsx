@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import {
   PIPELINE_STATUSES,
   PRIMARY_TECHS,
@@ -27,10 +27,11 @@ type BoardTableProps = {
   jobs: CartJob[];
   allJobs: CartJob[];
   onChange: (id: string, patch: Partial<CartJob>) => boolean;
+  onRemove: (job: CartJob) => void;
   focusId?: string | null;
 };
 
-export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps) {
+export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: BoardTableProps) {
   return (
     <table className="board-sheet text-left">
       <colgroup>
@@ -63,11 +64,24 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
         {jobs.map((job) => (
           <tr key={job.id} className="align-top">
             <td className="board-sticky-customer z-10 border-r border-b border-border px-1 py-1">
-              <CustomerNameField
-                job={job}
-                onChange={onChange}
-                autoFocus={focusId === job.id}
-              />
+              <div className="flex min-w-0 items-start gap-1">
+                <div className="min-w-0 flex-1">
+                  <CustomerNameField
+                    job={job}
+                    onChange={onChange}
+                    autoFocus={focusId === job.id}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove(job)}
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-subtle hover:bg-surface-3 hover:text-danger"
+                  title="Remove from board"
+                  aria-label={`Remove ${job.customerName || "job"} from the board`}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
             </td>
             <td className="border-b border-border px-1 py-1">
               <JobNumberField job={job} jobs={allJobs} onChange={onChange} />

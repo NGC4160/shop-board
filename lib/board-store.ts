@@ -28,6 +28,8 @@ export type BoardSnapshot = {
   jobs: CartJob[];
   prefs: BoardPrefs;
   lastHcpSyncAt: number | null;
+  /** Normalized job numbers removed on this device. HCP sync will not re-add them. */
+  dismissedJobNumbers: string[];
 };
 
 const defaultPrefs: BoardPrefs = {
@@ -37,13 +39,34 @@ const defaultPrefs: BoardPrefs = {
 type StoreListener = () => void;
 
 const listeners = new Set<StoreListener>();
+function emptyDismissed(): string[] {
+  return [];
+}
+
+function readDismissed(value: unknown): string[] {
+  if (!Array.isArray(value)) return emptyDismissed();
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => normalizeJobNumber(item))
+        .filter(Boolean),
+    ),
+  ];
+}
+
 let snapshot: BoardSnapshot = {
   jobs: seedJobs,
   prefs: defaultPrefs,
   lastHcpSyncAt: null,
+  dismissedJobNumbers: emptyDismissed(),
 };
 let hydrated = false;
-let undoStack: CartJob[] | null = null;
+type UndoSnapshot = {
+  jobs: CartJob[];
+  dismissedJobNumbers: string[];
+};
+let undoStack: UndoSnapshot | null = null;
 
 function emit() {
   listeners.forEach((listener) => listener());
@@ -86,6 +109,7 @@ function readFromStorage(): BoardSnapshot {
           },
           lastHcpSyncAt:
             typeof record.lastHcpSyncAt === "number" ? record.lastHcpSyncAt : null,
+          dismissedJobNumbers: readDismissed(record.dismissedJobNumbers),
         };
       }
     }
@@ -94,11 +118,17 @@ function readFromStorage(): BoardSnapshot {
       jobs: legacyJobs ?? seedJobs,
       prefs: defaultPrefs,
       lastHcpSyncAt: null,
+      dismissedJobNumbers: emptyDismissed(),
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     return next;
   } catch {
-    return { jobs: seedJobs, prefs: defaultPrefs, lastHcpSyncAt: null };
+    return {
+      jobs: seedJobs,
+      prefs: defaultPrefs,
+      lastHcpSyncAt: null,
+      dismissedJobNumbers: emptyDismissed(),
+    };
   }
 }
 
@@ -126,6 +156,7 @@ const serverSnapshot: BoardSnapshot = {
   jobs: seedJobs,
   prefs: defaultPrefs,
   lastHcpSyncAt: null,
+  dismissedJobNumbers: emptyDismissed(),
 };
 
 export function getServerBoardSnapshot(): BoardSnapshot {
@@ -133,7 +164,12 @@ export function getServerBoardSnapshot(): BoardSnapshot {
 }
 
 function commit(next: BoardSnapshot, remember = false) {
-  if (remember) undoStack = snapshot.jobs;
+  if (remember) {
+    undoStack = {
+      jobs: snapshot.jobs,
+      dismissedJobNumbers: snapshot.dismissedJobNumbers,
+    };
+  }
   snapshot = next;
   persist();
   emit();
@@ -234,18 +270,45 @@ export function insertJob(job: CartJob): boolean {
     customerName: job.customerName.trim(),
     jobNumber: normalizeJobNumber(job.jobNumber),
   };
-  saveJobs([next, ...snapshot.jobs.filter((item) => item.id !== job.id)]);
+  const key = next.jobNumber;
+  commit({
+    ...snapshot,
+    jobs: [next, ...snapshot.jobs.filter((item) => item.id !== job.id)],
+    dismissedJobNumbers: snapshot.dismissedJobNumbers.filter((item) => item !== key),
+  });
   return true;
 }
 
-export function deleteJob(id: string) {
-  saveJobs(snapshot.jobs.filter((job) => job.id !== id));
+export function deleteJob(id: string): boolean {
+  const current = snapshot.jobs.find((job) => job.id === id);
+  if (!current) return false;
+  const key = normalizeJobNumber(current.jobNumber);
+  const dismissed = key
+    ? [...new Set([...snapshot.dismissedJobNumbers, key])]
+    : snapshot.dismissedJobNumbers;
+  commit(
+    {
+      ...snapshot,
+      jobs: snapshot.jobs.filter((job) => job.id !== id),
+      dismissedJobNumbers: dismissed,
+    },
+    true,
+  );
+  return true;
 }
 
 export function undoDelete(): boolean {
   if (!undoStack) return false;
-  saveJobs(undoStack, false);
+  const restore = undoStack;
   undoStack = null;
+  commit(
+    {
+      ...snapshot,
+      jobs: restore.jobs,
+      dismissedJobNumbers: restore.dismissedJobNumbers,
+    },
+    false,
+  );
   return true;
 }
 
@@ -259,7 +322,14 @@ export function advanceJob(id: string): string | null {
 }
 
 export function replaceBoard(jobs: CartJob[]) {
-  saveJobs(jobs.length > 0 ? jobs : seedJobs, true);
+  commit(
+    {
+      ...snapshot,
+      jobs: jobs.length > 0 ? jobs : seedJobs,
+      dismissedJobNumbers: emptyDismissed(),
+    },
+    true,
+  );
 }
 
 export function loadSampleBoard() {
@@ -301,14 +371,19 @@ export function setPriority(id: string, priority: Priority) {
 }
 
 export function applyHcpJobs(incoming: HcpOpenJob[]): { added: number; updated: number } {
-  const { jobs, added, updated } = mergeHcpJobs(snapshot.jobs, incoming);
+  const dismissed = new Set(snapshot.dismissedJobNumbers);
+  const allowed = incoming.filter((job) => {
+    const key = normalizeJobNumber(job.jobNumber);
+    return !key || !dismissed.has(key);
+  });
+  const { jobs, added, updated } = mergeHcpJobs(snapshot.jobs, allowed);
   commit(
     {
       ...snapshot,
       jobs,
       lastHcpSyncAt: Date.now(),
     },
-    true,
+    false,
   );
   return { added, updated };
 }

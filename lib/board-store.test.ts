@@ -3,10 +3,12 @@ import { describe, it } from "node:test";
 import {
   applyHcpJobs,
   createDraftJob,
+  deleteJob,
   getBoardSnapshot,
   insertJob,
   loadSampleBoard,
   replaceBoard,
+  undoDelete,
   updateJob,
 } from "./board-store.ts";
 import { boardStats } from "./filters.ts";
@@ -77,6 +79,65 @@ describe("timeframe date", () => {
       getBoardSnapshot().jobs.find((job) => job.id === id)?.timeExpectation,
       "",
     );
+  });
+});
+
+describe("board-only delete", () => {
+  it("removes a row and can undo", () => {
+    replaceBoard([seedJobs[0], seedJobs[1]]);
+    const id = getBoardSnapshot().jobs[0].id;
+    const number = getBoardSnapshot().jobs[0].jobNumber;
+    assert.equal(deleteJob(id), true);
+    assert.equal(getBoardSnapshot().jobs.some((job) => job.id === id), false);
+    assert.equal(getBoardSnapshot().dismissedJobNumbers.includes(number), true);
+    assert.equal(undoDelete(), true);
+    assert.equal(getBoardSnapshot().jobs.some((job) => job.id === id), true);
+    assert.equal(getBoardSnapshot().dismissedJobNumbers.includes(number), false);
+  });
+
+  it("does not re-add a dismissed job number from Housecall Pro", () => {
+    replaceBoard([
+      {
+        ...seedJobs[0],
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+      },
+    ]);
+    const id = getBoardSnapshot().jobs[0].id;
+    assert.equal(deleteJob(id), true);
+    const { added, updated } = applyHcpJobs([
+      {
+        hcpId: "hcp-173128",
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    assert.equal(added, 0);
+    assert.equal(updated, 0);
+    assert.equal(getBoardSnapshot().jobs.some((job) => job.jobNumber === "173128"), false);
+  });
+
+  it("clears a dismissal when the same job number is added locally", () => {
+    replaceBoard([
+      {
+        ...seedJobs[0],
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+      },
+    ]);
+    assert.equal(deleteJob(getBoardSnapshot().jobs[0].id), true);
+    const draft = {
+      ...createDraftJob(),
+      customerName: "Mike Landry",
+      jobNumber: "173128",
+    };
+    assert.equal(insertJob(draft), true);
+    assert.equal(getBoardSnapshot().dismissedJobNumbers.includes("173128"), false);
+    assert.equal(getBoardSnapshot().jobs.some((job) => job.jobNumber === "173128"), true);
   });
 });
 

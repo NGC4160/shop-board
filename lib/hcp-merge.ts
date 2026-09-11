@@ -43,6 +43,18 @@ export function shouldFetchHcpJobs(
   return hasStaleHcpCompanyCustomerName(jobs);
 }
 
+/** Morning gate plus an explicit pull-to-refresh bypass. */
+export function shouldRunHcpClientFetch(
+  lastSyncAt: number | null | undefined,
+  jobs: readonly { customerName?: string | null }[],
+  now = Date.now(),
+  staleCompanyResyncDone = false,
+  force = false,
+): boolean {
+  if (force) return true;
+  return shouldFetchHcpJobs(lastSyncAt, jobs, now, staleCompanyResyncDone);
+}
+
 function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
   const map = new Map<string, CartJob>();
   for (const job of jobs) {

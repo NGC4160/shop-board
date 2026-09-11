@@ -4,6 +4,7 @@ import {
   hasStaleHcpCompanyCustomerName,
   mergeHcpJobs,
   shouldFetchHcpJobs,
+  shouldRunHcpClientFetch,
   STALE_HCP_COMPANY_CUSTOMER,
 } from "./hcp-merge.ts";
 import { mapHcpJob } from "./hcp.ts";
@@ -152,6 +153,13 @@ describe("mergeHcpJobs", () => {
       shouldFetchHcpJobs(seven, [{ customerName: STALE_HCP_COMPANY_CUSTOMER }], sixFifty),
       true,
     );
+  });
+
+  it("force refresh fetches even when already synced today", () => {
+    const seven = Date.parse("2026-09-09T12:00:00.000Z");
+    const noon = Date.parse("2026-09-09T17:00:00.000Z");
+    assert.equal(shouldRunHcpClientFetch(seven, [{ customerName: "Mike Landry" }], noon, false, false), false);
+    assert.equal(shouldRunHcpClientFetch(seven, [{ customerName: "Mike Landry" }], noon, false, true), true);
   });
 
   it("overwrites a stale shop-as-customer name when syncing by job number", () => {
