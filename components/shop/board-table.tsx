@@ -36,8 +36,8 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
     <table className="board-sheet text-left">
       <colgroup>
         <col className="board-col-index" />
-        <col className="board-col-job" />
         <col className="board-col-customer" />
+        <col className="board-col-job" />
         <col className="board-col-tech" />
         <col className="board-col-status" />
         <col className="board-col-next" />
@@ -53,11 +53,11 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
               #
             </span>
           </th>
+          <th className="board-sticky-customer-head border-b border-r border-border px-1 py-1">
+            <ColumnLabel>Customer name</ColumnLabel>
+          </th>
           <th className="board-sticky-job-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Job number</ColumnLabel>
-          </th>
-          <th className="board-sticky-head border-b border-border px-1 py-1">
-            <ColumnLabel>Customer name</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
             <ColumnLabel>Primary tech</ColumnLabel>
@@ -91,10 +91,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                   {rowNumber}
                 </span>
               </td>
-              <td className="board-sticky-job border-r border-b border-border px-1 py-1">
-                <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
-              </td>
-              <td className="border-b border-border px-1 py-1">
+              <td className="board-sticky-customer border-r border-b border-border px-1 py-1">
                 <div className="flex min-w-0 items-start gap-1">
                   <div className="min-w-0 flex-1">
                     <CustomerNameField
@@ -113,6 +110,9 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                     <Trash2 className="size-4" />
                   </button>
                 </div>
+              </td>
+              <td className="board-sticky-job border-r border-b border-border px-1 py-1">
+                <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
               </td>
               <td className="border-b border-border px-1 py-1">
                 <ComboCell
