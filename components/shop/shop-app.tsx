@@ -29,6 +29,7 @@ import {
 import { BoardTable, DraftComposer } from "@/components/shop/board-table";
 import { RemoveConfirm } from "@/components/shop/remove-confirm";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
+import { useMobileViewportRestore } from "@/components/shop/use-mobile-viewport";
 
 export function ShopApp() {
   const board = useSyncExternalStore(
@@ -41,6 +42,7 @@ export function ShopApp() {
   const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const scrollRef = useRef<HTMLElement>(null);
+  useMobileViewportRestore(scrollRef);
 
   const reportSync = useCallback((result: ClientHcpSyncResult, forced: boolean) => {
     if (!result.ok) {
@@ -53,8 +55,10 @@ export function ShopApp() {
       }
       return;
     }
-    if (result.added || result.updated) {
-      toast(`Housecall Pro · ${result.added} new, ${result.updated} updated`);
+    if (result.added || result.updated || result.removed) {
+      toast(
+        `Housecall Pro · ${result.added} new, ${result.updated} updated, ${result.removed} left`,
+      );
       return;
     }
     if (forced) toast("Housecall Pro · up to date");
@@ -180,7 +184,7 @@ export function ShopApp() {
   };
 
   return (
-    <div className="shop-shell flex flex-col bg-background text-foreground">
+    <div className="shop-shell flex min-w-0 flex-col bg-background text-foreground">
       <Toaster
         theme="dark"
         position="bottom-right"
@@ -213,7 +217,7 @@ export function ShopApp() {
         {refreshing ? "Syncing Housecall Pro…" : armed ? "Release to sync" : pull > 16 ? "Pull to sync" : null}
       </div>
 
-      <main ref={scrollRef} className="board-scroll min-h-0 flex-1">
+      <main ref={scrollRef} className="board-scroll min-h-0 min-w-0 flex-1">
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
           NGC Shop Board
         </p>

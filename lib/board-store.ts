@@ -370,13 +370,17 @@ export function setPriority(id: string, priority: Priority) {
   updateJob(id, { priority });
 }
 
-export function applyHcpJobs(incoming: HcpOpenJob[]): { added: number; updated: number } {
+export function applyHcpJobs(incoming: HcpOpenJob[]): {
+  added: number;
+  updated: number;
+  removed: number;
+} {
   const dismissed = new Set(snapshot.dismissedJobNumbers);
   const allowed = incoming.filter((job) => {
     const key = normalizeJobNumber(job.jobNumber);
     return !key || !dismissed.has(key);
   });
-  const { jobs, added, updated } = mergeHcpJobs(snapshot.jobs, allowed);
+  const { jobs, added, updated, removed } = mergeHcpJobs(snapshot.jobs, allowed);
   commit(
     {
       ...snapshot,
@@ -385,5 +389,5 @@ export function applyHcpJobs(incoming: HcpOpenJob[]): { added: number; updated: 
     },
     false,
   );
-  return { added, updated };
+  return { added, updated, removed };
 }

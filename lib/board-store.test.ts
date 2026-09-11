@@ -180,7 +180,7 @@ describe("applyHcpJobs customer merge", () => {
     assert.equal(getBoardSnapshot().jobs[0].jobNumber, "173128");
   });
 
-  it("does not blank a stored name when HCP sends an empty one", () => {
+  it("clears a leftover shop name when HCP sends an empty one", () => {
     replaceBoard([
       {
         ...seedJobs[0],
@@ -199,7 +199,49 @@ describe("applyHcpJobs customer merge", () => {
         primaryTech: "",
       },
     ]);
+    assert.equal(updated, 1);
+    assert.equal(getBoardSnapshot().jobs[0].customerName, "");
+  });
+
+  it("drops finished HCP orphans that are missing from the open pull", () => {
+    replaceBoard([
+      {
+        ...seedJobs[0],
+        id: "hcp-17429",
+        jobNumber: "17429",
+        customerName: "Neighborhood Golf Carts",
+      },
+      {
+        ...seedJobs[1],
+        id: "hcp-17447",
+        jobNumber: "17447",
+        customerName: "Neighborhood Golf Carts",
+      },
+      {
+        ...seedJobs[2],
+        jobNumber: "17428",
+        customerName: "Susie Malloy",
+        nextAction: "Text when ready",
+      },
+    ]);
+    const { added, updated, removed } = applyHcpJobs([
+      {
+        hcpId: "hcp-17428",
+        jobNumber: "17428",
+        customerName: "Susie Malloy",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    assert.equal(added, 0);
     assert.equal(updated, 0);
-    assert.equal(getBoardSnapshot().jobs[0].customerName, "Neighborhood Golf Carts");
+    assert.equal(removed, 2);
+    const jobs = getBoardSnapshot().jobs;
+    assert.equal(jobs.some((job) => job.jobNumber === "17429"), false);
+    assert.equal(jobs.some((job) => job.jobNumber === "17447"), false);
+    assert.equal(jobs.some((job) => job.jobNumber === "17428"), true);
+    assert.equal(jobs.find((job) => job.jobNumber === "17428")?.nextAction, "Text when ready");
   });
 });

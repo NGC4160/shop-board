@@ -36,9 +36,9 @@ Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aw
 
 ## Customer names from Housecall Pro
 
-`customerNameFromHcp` prefers `first_name` + `last_name` when either is present. It uses `company` / `company_name` only when there is no person name (then `display_name` / `name` if HCP sent those). It never invents a name.
+`customerNameFromHcp` prefers `first_name` + `last_name` when either is present. It never uses the shop name **Neighborhood Golf Carts** (or close variants) as `customerName` — those values fall through to other person / display / company fields. Company is only used when there is no person name. It never invents a name.
 
-Residential customers often have the shop filled as company, which previously made every row show **Neighborhood Golf Carts**. Morning sync overwrites the board customer name by job number when HCP sends a real name, so those stale rows get corrected.
+Residential customers often have the shop filled as company, which previously made every row show **Neighborhood Golf Carts**. Morning sync overwrites the board customer name by job number when HCP sends a real name, and clears a leftover shop name even if HCP sends an empty one.
 
 ## Job numbers
 
@@ -97,11 +97,10 @@ Each shop tablet/TV then merges that job list into the local board:
 
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
 - Housecall Pro updates **job list, customer name, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
-- Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented and do not blank a stored name.
-- If the board still has any customer name that is exactly `Neighborhood Golf Carts` (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
-- Local-only rows (blank add-cart lines, jobs not in the HCP open list) stay on the board.
+- Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented. A leftover shop-as-customer name is cleared instead of kept.
+- If the board still has any customer name that is `Neighborhood Golf Carts` or a close variant (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
+- Jobs that came from Housecall Pro (or still show the shop as the customer) and are **not** in the open HCP pull drop off the board — finished / canceled / paid-complete work leaves with the sync. Next step and Timeframe are kept only on jobs that remain open. Local-only `N` adds that were never synced from HCP stay.
 - **Pull-to-refresh** on the spreadsheet forces the same `/api/jobs/hcp` merge even if the board already synced after 7:00 AM today. Morning sync still runs on its own schedule.
-- Closing a job in Housecall Pro does **not** automatically remove it here. The open-jobs list simply omits closed work; existing local rows stay until someone removes them on the board.
 
 ## Removing a job from the board
 

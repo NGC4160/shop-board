@@ -9,6 +9,7 @@ export type ClientHcpSyncResult = {
   error?: string;
   added: number;
   updated: number;
+  removed: number;
   count: number;
 };
 
@@ -45,6 +46,7 @@ async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {
       reason: "Already synced after 7:00 AM America/Chicago today",
       added: 0,
       updated: 0,
+      removed: 0,
       count: 0,
     };
   }
@@ -58,6 +60,7 @@ async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {
       error: body?.error || `Housecall Pro sync failed (${response.status})`,
       added: 0,
       updated: 0,
+      removed: 0,
       count: 0,
     };
   }
@@ -68,6 +71,7 @@ async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {
       reason: body.reason || "Housecall Pro sync skipped",
       added: 0,
       updated: 0,
+      removed: 0,
       count: 0,
     };
   }
@@ -78,25 +82,27 @@ async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {
       error: body.error || "Housecall Pro sync failed",
       added: 0,
       updated: 0,
+      removed: 0,
       count: 0,
     };
   }
 
   const jobs = Array.isArray(body.jobs) ? body.jobs : [];
-  const { added, updated } = applyHcpJobs(jobs);
+  const { added, updated, removed } = applyHcpJobs(jobs);
   staleCompanyResyncDone = true;
   return {
     ok: true,
     skipped: false,
     added,
     updated,
+    removed,
     count: jobs.length,
   };
 }
 
 export async function syncFromHcp(force = false): Promise<ClientHcpSyncResult> {
   if (typeof window === "undefined") {
-    return { ok: true, skipped: true, reason: "server", added: 0, updated: 0, count: 0 };
+    return { ok: true, skipped: true, reason: "server", added: 0, updated: 0, removed: 0, count: 0 };
   }
   if (inflight && (inflightForce || !force)) return inflight;
   if (inflight && force && !inflightForce) {
