@@ -26,7 +26,9 @@ import {
   startHcpMorningSync,
   type ClientHcpSyncResult,
 } from "@/lib/hcp-client";
+import { formatHcpSyncFeedback } from "@/lib/hcp-sync-status";
 import { BoardTable, DraftComposer } from "@/components/shop/board-table";
+import { HcpSyncButton } from "@/components/shop/hcp-sync-button";
 import { RemoveConfirm } from "@/components/shop/remove-confirm";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
 import { useMobileViewportRestore } from "@/components/shop/use-mobile-viewport";
@@ -41,6 +43,7 @@ export function ShopApp() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncResult, setLastSyncResult] = useState<ClientHcpSyncResult | null>(null);
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
 
@@ -74,18 +77,26 @@ export function ShopApp() {
     });
   }, [reportSync]);
 
-  const onPullRefresh = useCallback(async () => {
+  const runForcedSync = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
       const result = await refreshHcpJobs();
+      setLastSyncResult(result);
       reportSync(result, true);
     } finally {
       setRefreshing(false);
     }
   }, [refreshing, reportSync]);
 
-  const { pull, armed } = usePullToRefresh(scrollRef, onPullRefresh, refreshing);
+  const { pull, armed } = usePullToRefresh(scrollRef, runForcedSync, refreshing);
+  const syncStatus = formatHcpSyncFeedback({
+    busy: refreshing,
+    pulling: pull > 16,
+    armed,
+    lastResult: lastSyncResult,
+    lastSyncAt: board.lastHcpSyncAt,
+  });
 
   const startDraft = useCallback(() => {
     if (draft) {
@@ -211,10 +222,12 @@ export function ShopApp() {
         className="board-refresh no-print"
         data-refreshing={refreshing || undefined}
         data-testid="hcp-refresh"
-        aria-live="polite"
-        style={{ height: refreshing ? 44 : pull }}
+        style={{ height: Math.max(40, refreshing ? 44 : pull) }}
       >
-        {refreshing ? "Syncing Housecall Pro…" : armed ? "Release to sync" : pull > 16 ? "Pull to sync" : null}
+        <p className="min-w-0 flex-1 truncate" role="status" aria-live="polite">
+          {syncStatus}
+        </p>
+        <HcpSyncButton busy={refreshing} onSync={() => void runForcedSync()} />
       </div>
 
       <main ref={scrollRef} className="board-scroll min-h-0 min-w-0 flex-1">
@@ -227,7 +240,8 @@ export function ShopApp() {
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
             <p className="font-display text-2xl font-semibold">No carts on the board</p>
             <p className="mt-2 text-sm text-muted">
-              New carts come from Housecall Pro morning sync. Pull down to sync, or press{" "}
+              New carts come from Housecall Pro morning sync. Tap Sync (or pull down) to
+              refresh, or press{" "}
               <kbd className="rounded-sm border border-border px-1">N</kbd> to add one locally.
             </p>
           </div>
