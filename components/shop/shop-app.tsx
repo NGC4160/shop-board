@@ -217,7 +217,7 @@ export function ShopApp() {
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
           NGC Shop Board
         </p>
-        <p className="sr-only">Spreadsheet · sorted by job number</p>
+        <p className="sr-only">Spreadsheet · numbered in job-number order</p>
 
         {visible.length === 0 ? (
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
