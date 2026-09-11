@@ -178,8 +178,8 @@ function NextStepField({
     setDraft(job.nextAction);
   }
 
-  const commit = () => {
-    const next = draft.trim();
+  const commit = (raw: string) => {
+    const next = raw.trim();
     setDraft(next);
     if (next !== job.nextAction) onChange(job.id, { nextAction: next });
   };
@@ -191,9 +191,12 @@ function NextStepField({
       placeholder="Next step"
       autoComplete="off"
       onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
+      onBlur={(event) => commit(event.currentTarget.value)}
       onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Enter") {
+          commit(event.currentTarget.value);
+          event.currentTarget.blur();
+        }
       }}
       className="h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-base text-foreground"
     />
