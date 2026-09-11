@@ -141,6 +141,20 @@ describe("board-only delete", () => {
   });
 });
 
+describe("next step", () => {
+  it("stores free text and can clear it", () => {
+    loadSampleBoard();
+    const id = getBoardSnapshot().jobs[0].id;
+    assert.equal(updateJob(id, { nextAction: "Call Jesse about the controller" }), true);
+    assert.equal(
+      getBoardSnapshot().jobs.find((job) => job.id === id)?.nextAction,
+      "Call Jesse about the controller",
+    );
+    assert.equal(updateJob(id, { nextAction: "" }), true);
+    assert.equal(getBoardSnapshot().jobs.find((job) => job.id === id)?.nextAction, "");
+  });
+});
+
 describe("applyHcpJobs customer merge", () => {
   it("overwrites Neighborhood Golf Carts when HCP sends a non-empty name", () => {
     replaceBoard([

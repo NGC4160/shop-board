@@ -10,15 +10,16 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 
-One dense table on one page. Rows are jobs. Columns are these five fields, in this order, always sorted by job number ascending:
+One dense table on one page. Rows are jobs. Columns are these six fields, in this order, always sorted by job number ascending:
 
 1. **Customer name**
 2. **Job number**
 3. **Primary tech**
 4. **Current Status** (Housecall Pro Jobs pipeline dropdown)
-5. **Timeframe** (calendar date picker — a real `YYYY-MM-DD` date, empty/clearable)
+5. **Next step** (free text — the existing local `nextAction` field; empty is allowed)
+6. **Timeframe** (calendar date picker — a real `YYYY-MM-DD` date, empty/clearable)
 
-Every floor field edits **inline**. There is no top chrome (no Add cart button, toolbar, stats cards, search, or filters), no cart / bay / next-action / notes / phone columns, and no details drawer. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
+Every floor field edits **inline**. There is no top chrome (no Add cart button, toolbar, stats cards, search, or filters), no cart / bay / notes / phone columns, and no details drawer. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
 
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
 - **Keyboard:** `N` add cart locally, `Esc` abandon a blank add
@@ -95,7 +96,7 @@ Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handl
 Each shop tablet/TV then merges that job list into the local board:
 
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
-- Housecall Pro updates **job list, customer name, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**. **Timeframe is local/board-only** — HCP does not send or overwrite it.
+- Housecall Pro updates **job list, customer name, phone**, and **pipeline status when the API gives an exact Jobs pipeline name**. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented and do not blank a stored name.
 - If the board still has any customer name that is exactly `Neighborhood Golf Carts` (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
 - Local-only rows (blank add-cart lines, jobs not in the HCP open list) stay on the board.

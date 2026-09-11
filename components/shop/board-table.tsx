@@ -39,6 +39,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
         <col className="board-col-job" />
         <col className="board-col-tech" />
         <col className="board-col-status" />
+        <col className="board-col-next" />
         <col className="board-col-timeframe" />
       </colgroup>
       <thead className="text-sm">
@@ -54,6 +55,9 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
             <ColumnLabel>Current Status</ColumnLabel>
+          </th>
+          <th className="board-sticky-head border-b border-border px-1 py-1">
+            <ColumnLabel>Next step</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
             <ColumnLabel>Timeframe</ColumnLabel>
@@ -107,6 +111,9 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
               />
             </td>
             <td className="border-b border-border px-1 py-1">
+              <NextStepField job={job} onChange={onChange} />
+            </td>
+            <td className="border-b border-border px-1 py-1">
               <TimeframeField job={job} onChange={onChange} />
             </td>
           </tr>
@@ -153,6 +160,43 @@ export function DraftComposer({
         </button>
       </div>
     </div>
+  );
+}
+
+function NextStepField({
+  job,
+  onChange,
+}: {
+  job: CartJob;
+  onChange: (id: string, patch: Partial<CartJob>) => boolean;
+}) {
+  const [draft, setDraft] = useState(job.nextAction);
+  const [seen, setSeen] = useState(job.nextAction);
+
+  if (job.nextAction !== seen) {
+    setSeen(job.nextAction);
+    setDraft(job.nextAction);
+  }
+
+  const commit = () => {
+    const next = draft.trim();
+    setDraft(next);
+    if (next !== job.nextAction) onChange(job.id, { nextAction: next });
+  };
+
+  return (
+    <input
+      aria-label="Next step"
+      value={draft}
+      placeholder="Next step"
+      autoComplete="off"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+      className="h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-base text-foreground"
+    />
   );
 }
 
