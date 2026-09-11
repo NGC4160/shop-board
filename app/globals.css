@@ -172,31 +172,47 @@
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 64rem);
+    width: max(100%, 68rem);
+  }
+
+  .board-col-index {
+    width: 2.75rem;
+  }
+
+  .board-col-job {
+    width: 12%;
   }
 
   .board-col-customer {
     width: 18%;
   }
 
-  .board-col-job {
-    width: 11%;
-  }
-
   .board-col-tech {
-    width: 15%;
+    width: 14%;
   }
 
   .board-col-status {
-    width: 18%;
+    width: 17%;
   }
 
   .board-col-next {
-    width: 22%;
+    width: 21%;
   }
 
   .board-col-timeframe {
     width: 16%;
+  }
+
+  .board-row-index {
+    display: flex;
+    height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
   }
 
   .board-date {
@@ -209,18 +225,34 @@
     filter: invert(1);
   }
 
-  .board-sticky-customer {
+  .board-sticky-index {
     position: sticky;
     left: 0;
+    z-index: 12;
+    background: var(--color-surface);
+  }
+
+  .board-sticky-index-head {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 32;
+    background: var(--color-surface-2);
+  }
+
+  .board-sticky-job {
+    position: sticky;
+    left: 2.75rem;
+    z-index: 11;
     background: var(--color-surface);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
   }
 
-  .board-sticky-customer-head {
+  .board-sticky-job-head {
     position: sticky;
     top: 0;
-    left: 0;
-    z-index: 30;
+    left: 2.75rem;
+    z-index: 31;
     background: var(--color-surface-2);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
   }
@@ -250,8 +282,9 @@
   }
 
   .board-sheet,
-  .board-col-customer,
+  .board-col-index,
   .board-col-job,
+  .board-col-customer,
   .board-col-tech,
   .board-col-status,
   .board-col-next,
@@ -259,8 +292,10 @@
     width: auto !important;
   }
 
-  .board-sticky-customer,
-  .board-sticky-customer-head,
+  .board-sticky-index,
+  .board-sticky-index-head,
+  .board-sticky-job,
+  .board-sticky-job-head,
   .board-sticky-head {
     position: static !important;
     box-shadow: none !important;

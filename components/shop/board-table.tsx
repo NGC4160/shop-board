@@ -35,8 +35,9 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
   return (
     <table className="board-sheet text-left">
       <colgroup>
-        <col className="board-col-customer" />
+        <col className="board-col-index" />
         <col className="board-col-job" />
+        <col className="board-col-customer" />
         <col className="board-col-tech" />
         <col className="board-col-status" />
         <col className="board-col-next" />
@@ -44,11 +45,19 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
       </colgroup>
       <thead className="text-sm">
         <tr>
-          <th className="board-sticky-customer-head border-b border-r border-border px-1 py-1">
-            <ColumnLabel>Customer name</ColumnLabel>
+          <th
+            scope="col"
+            className="board-sticky-index-head border-b border-r border-border px-0 py-1"
+          >
+            <span className="inline-flex h-9 w-full items-center justify-center text-xs font-semibold tracking-wide text-muted">
+              #
+            </span>
+          </th>
+          <th className="board-sticky-job-head border-b border-r border-border px-1 py-1">
+            <ColumnLabel>Job number</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
-            <ColumnLabel>Job number</ColumnLabel>
+            <ColumnLabel>Customer name</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
             <ColumnLabel>Primary tech</ColumnLabel>
@@ -65,59 +74,75 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
         </tr>
       </thead>
       <tbody>
-        {jobs.map((job) => (
-          <tr key={job.id} className="align-top">
-            <td className="board-sticky-customer z-10 border-r border-b border-border px-1 py-1">
-              <div className="flex min-w-0 items-start gap-1">
-                <div className="min-w-0 flex-1">
-                  <CustomerNameField
-                    job={job}
-                    onChange={onChange}
-                    autoFocus={focusId === job.id}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onRemove(job)}
-                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-subtle hover:bg-surface-3 hover:text-danger"
-                  title="Remove from board"
-                  aria-label={`Remove ${job.customerName || "job"} from the board`}
+        {jobs.map((job, index) => {
+          const rowNumber = index + 1;
+          return (
+            <tr
+              key={job.id}
+              className="align-top"
+              data-board-row={rowNumber}
+              data-job-number={job.jobNumber}
+            >
+              <td className="board-sticky-index border-r border-b border-border px-0 py-1">
+                <span
+                  className="board-row-index"
+                  aria-label={`Board row ${rowNumber}`}
                 >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
-            </td>
-            <td className="border-b border-border px-1 py-1">
-              <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
-            </td>
-            <td className="border-b border-border px-1 py-1">
-              <ComboCell
-                value={job.primaryTech}
-                options={PRIMARY_TECHS}
-                emptyLabel="Unassigned"
-                placeholder="Tech"
-                aria-label="Primary tech"
-                onChange={(primaryTech) => onChange(job.id, { primaryTech })}
-              />
-            </td>
-            <td className="border-b border-border px-1 py-1">
-              <ComboCell
-                value={job.status}
-                options={PIPELINE_STATUSES}
-                placeholder="Status"
-                aria-label="Current Status"
-                selectClassName={cn("font-semibold", STATUS_CHIP[statusTone(job.status)])}
-                onChange={(status) => onChange(job.id, { status })}
-              />
-            </td>
-            <td className="border-b border-border px-1 py-1">
-              <NextStepField job={job} onChange={onChange} />
-            </td>
-            <td className="border-b border-border px-1 py-1">
-              <TimeframeField job={job} onChange={onChange} />
-            </td>
-          </tr>
-        ))}
+                  {rowNumber}
+                </span>
+              </td>
+              <td className="board-sticky-job border-r border-b border-border px-1 py-1">
+                <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
+              </td>
+              <td className="border-b border-border px-1 py-1">
+                <div className="flex min-w-0 items-start gap-1">
+                  <div className="min-w-0 flex-1">
+                    <CustomerNameField
+                      job={job}
+                      onChange={onChange}
+                      autoFocus={focusId === job.id}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(job)}
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-subtle hover:bg-surface-3 hover:text-danger"
+                    title="Remove from board"
+                    aria-label={`Remove ${job.customerName || "job"} from the board`}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              </td>
+              <td className="border-b border-border px-1 py-1">
+                <ComboCell
+                  value={job.primaryTech}
+                  options={PRIMARY_TECHS}
+                  emptyLabel="Unassigned"
+                  placeholder="Tech"
+                  aria-label="Primary tech"
+                  onChange={(primaryTech) => onChange(job.id, { primaryTech })}
+                />
+              </td>
+              <td className="border-b border-border px-1 py-1">
+                <ComboCell
+                  value={job.status}
+                  options={PIPELINE_STATUSES}
+                  placeholder="Status"
+                  aria-label="Current Status"
+                  selectClassName={cn("font-semibold", STATUS_CHIP[statusTone(job.status)])}
+                  onChange={(status) => onChange(job.id, { status })}
+                />
+              </td>
+              <td className="border-b border-border px-1 py-1">
+                <NextStepField job={job} onChange={onChange} />
+              </td>
+              <td className="border-b border-border px-1 py-1">
+                <TimeframeField job={job} onChange={onChange} />
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
