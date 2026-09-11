@@ -1,3 +1,5 @@
+import { chicagoParts } from "@/lib/chicago";
+
 export const STORAGE_KEY = "ngc-shop-board-v6";
 export const LEGACY_JOBS_KEY = "ngc-shop-board-v5";
 export const LEGACY_SORT_KEY = "ngc-shop-board-sort-v2";
@@ -56,15 +58,43 @@ export const NEXT_ACTION_PRESETS = [
   "Schedule return delivery",
 ] as const;
 
-export const TIME_PRESETS = [
-  "Due today",
-  "Due today 4:00 PM",
-  "Due tomorrow",
-  "Ready now",
-  "Promised Friday morning",
-  "Parts ETA Wednesday",
-  "Hold until paid",
-] as const;
+/** Calendar date only: `YYYY-MM-DD`. Empty is allowed. */
+export const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export function isIsoDate(value: string): boolean {
+  const match = value.trim().match(ISO_DATE_PATTERN);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+/** Keep a real calendar date; drop phrases, "999", and other leftover time text. */
+export function normalizeTimeframe(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (isIsoDate(trimmed)) return trimmed;
+  const embedded = trimmed.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (embedded?.[1] && isIsoDate(embedded[1])) return embedded[1];
+  return "";
+}
+
+export function formatTimeframe(value: string): string {
+  const iso = normalizeTimeframe(value);
+  if (!iso) return "";
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(year, month - 1, day));
+}
 
 export const CART_MAKES = [
   "EZ-GO",
@@ -168,6 +198,20 @@ export type CartJobDraft = {
 const DAY = 86_400_000;
 const NOW = Date.now();
 
+function chicagoDayOffset(days: number, now = NOW): string {
+  const { year, month, day } = chicagoParts(now);
+  const stamp = new Date(Date.UTC(year, month - 1, day + days));
+  const y = stamp.getUTCFullYear();
+  const m = String(stamp.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(stamp.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+const SEED_TODAY = chicagoDayOffset(0);
+const SEED_TOMORROW = chicagoDayOffset(1);
+const SEED_PLUS_3 = chicagoDayOffset(3);
+const SEED_PLUS_5 = chicagoDayOffset(5);
+
 function seed(
   partial: Omit<CartJob, "history" | "createdAt" | "updatedAt" | "statusChangedAt"> & {
     daysAgo: number;
@@ -221,7 +265,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Hayden Silva",
     status: "In Progress",
     nextAction: "Replace solenoid and test drive",
-    timeExpectation: "Due today 4:00 PM",
+    timeExpectation: SEED_TODAY,
     priority: "hot",
     notes: "Intermittent no-go after sitting. Customer waiting on it for the weekend.",
     daysAgo: 2,
@@ -241,7 +285,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Marlon Gray",
     status: "Waiting on Materials",
     nextAction: "Call when controller comes in",
-    timeExpectation: "Parts ETA Wednesday",
+    timeExpectation: SEED_PLUS_5,
     priority: "waiting",
     notes: "Controller ordered from Navitas. Tracking in Housecall Pro.",
     daysAgo: 8,
@@ -261,7 +305,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "",
     status: "Customer drop off",
     nextAction: "Confirm drop-off time",
-    timeExpectation: "Promised Friday morning",
+    timeExpectation: SEED_PLUS_3,
     priority: "promised",
     notes: "Dropping off Friday. No tech assigned yet.",
     daysAgo: 1,
@@ -281,7 +325,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Hayden Silva",
     status: "Awaiting Payment",
     nextAction: "Call customer — cart is ready",
-    timeExpectation: "Ready now",
+    timeExpectation: SEED_TODAY,
     priority: "promised",
     notes: "Fleet cart 7. Invoice already in Housecall Pro.",
     daysAgo: 11,
@@ -301,7 +345,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Ryan Gorgoglione",
     status: "Deposit Needed",
     nextAction: "Text Housecall Pro invoice",
-    timeExpectation: "Hold until paid",
+    timeExpectation: "",
     priority: "waiting",
     notes: "Estimate approved verbally. Need deposit before parts.",
     daysAgo: 4,
@@ -321,7 +365,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Marlon Gray",
     status: "Pictures Needed",
     nextAction: "Take pictures",
-    timeExpectation: "Due tomorrow",
+    timeExpectation: SEED_TOMORROW,
     priority: "none",
     notes: "Lithium pack. Customer wants photos of the underbody scrape.",
     daysAgo: 1,
@@ -341,7 +385,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Hayden Silva",
     status: "Shop Queue",
     nextAction: "QC and wash",
-    timeExpectation: "Due tomorrow",
+    timeExpectation: SEED_TOMORROW,
     priority: "none",
     notes: "Steering click. Parts are here — waiting on a bay.",
     daysAgo: 6,
@@ -381,7 +425,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "",
     status: "Need to Order Materials",
     nextAction: "Order parts",
-    timeExpectation: "Parts ETA Wednesday",
+    timeExpectation: SEED_PLUS_5,
     priority: "waiting",
     notes: "Rear leaf springs. Confirm OEM vs aftermarket with Ryan.",
     daysAgo: 2,
@@ -401,7 +445,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Hayden Silva",
     status: "Awaiting QC",
     nextAction: "QC and wash",
-    timeExpectation: "Due today",
+    timeExpectation: SEED_TODAY,
     priority: "hot",
     notes: "Motor swap done. Needs test drive before pickup.",
     daysAgo: 7,
@@ -421,7 +465,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Ryan Gorgoglione",
     status: "Scheduled",
     nextAction: "Confirm drop-off time",
-    timeExpectation: "Promised Friday morning",
+    timeExpectation: SEED_PLUS_3,
     priority: "promised",
     notes: "On-site Friday. Bring solenoid kit.",
     daysAgo: 3,
@@ -461,7 +505,7 @@ export const seedJobs: CartJob[] = [
     primaryTech: "Hayden Silva",
     status: "JESSE- estimate ready to call",
     nextAction: "Call customer",
-    timeExpectation: "Due today",
+    timeExpectation: SEED_TODAY,
     priority: "none",
     notes: "Estimate written. Jesse to call this afternoon.",
     daysAgo: 3,
@@ -598,27 +642,14 @@ export function isClosedStatus(status: string): boolean {
   return status === "Invoice Paid" || status === "Completed";
 }
 
-const BARE_NUMBER = /^\d[\d,]*\.?\d*$/;
-const HUGE_DURATION = /\b\d{3,}\s*(days?|d|hrs?|hours?|weeks?|wks?|months?)\b/i;
-
 /**
- * Empty and TIME_PRESETS are allowed.
- * Other… custom text must be a readable shop phrase — not a bare number,
- * a negative, or an absurd day/duration count like 999 / 999 days.
+ * Empty is allowed. Anything else must be a real calendar date (`YYYY-MM-DD`).
+ * Phrases, "999", and relative text are not stored.
  */
 export function timeExpectationError(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if ((TIME_PRESETS as readonly string[]).includes(trimmed)) return null;
-  if (/^-/.test(trimmed) || /\b-\d/.test(trimmed)) {
-    return "Time can't be a negative or minus-only value";
-  }
-  if (BARE_NUMBER.test(trimmed) || HUGE_DURATION.test(trimmed)) {
-    return "Time looks like junk — use a readable phrase";
-  }
-  if (/^[-.\s]+$/.test(trimmed)) {
-    return "Enter a readable time expectation";
-  }
+  if (!isIsoDate(trimmed)) return "Timeframe must be a calendar date";
   return null;
 }
 
@@ -644,7 +675,7 @@ export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
     primaryTech: draft.primaryTech.trim(),
     status,
     nextAction: draft.nextAction.trim(),
-    timeExpectation: draft.timeExpectation.trim(),
+    timeExpectation: normalizeTimeframe(draft.timeExpectation),
     priority: draft.priority,
     notes: draft.notes.trim(),
     history,
@@ -914,7 +945,7 @@ export function upgradeJob(value: unknown): CartJob | null {
     primaryTech: job.primaryTech,
     status: job.status,
     nextAction: job.nextAction,
-    timeExpectation: job.timeExpectation,
+    timeExpectation: normalizeTimeframe(job.timeExpectation),
     priority: isPriority(String(job.priority ?? "none"))
       ? (job.priority as Priority)
       : "none",

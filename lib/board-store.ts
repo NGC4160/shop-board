@@ -12,6 +12,7 @@ import {
   nextPipelineStatus,
   normalizeJobNumber,
   seedJobs,
+  normalizeTimeframe,
   timeExpectationError,
   type CartJob,
   type Priority,
@@ -161,11 +162,9 @@ export function updateJob(id: string, patch: Partial<CartJob>): boolean {
     if (hasDuplicateJobNumber(jobs, id, nextPatch.jobNumber)) return false;
     nextPatch.jobNumber = normalizeJobNumber(nextPatch.jobNumber);
   }
-  if (
-    nextPatch.timeExpectation !== undefined &&
-    timeExpectationError(nextPatch.timeExpectation)
-  ) {
-    return false;
+  if (nextPatch.timeExpectation !== undefined) {
+    nextPatch.timeExpectation = normalizeTimeframe(nextPatch.timeExpectation);
+    if (timeExpectationError(nextPatch.timeExpectation)) return false;
   }
 
   const now = Date.now();

@@ -23,7 +23,7 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Neighborhood Golf Carts — Shop Board",
   description:
-    "Shop floor board for Neighborhood Golf Carts in Covington, LA. Customer, Housecall Pro job number, primary tech, and Jobs pipeline status.",
+    "Shop floor board for Neighborhood Golf Carts in Covington, LA. Customer, Housecall Pro job number, primary tech, Jobs pipeline status, and Timeframe date.",
 };
 
 export const viewport: Viewport = {
