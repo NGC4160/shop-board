@@ -1,6 +1,6 @@
 import { applyHcpJobs, getBoardSnapshot } from "@/lib/board-store";
 import type { HcpOpenJob } from "@/lib/hcp";
-import { shouldFetchHcpJobs } from "@/lib/hcp-merge";
+import { shouldRunHcpClientFetch } from "@/lib/hcp-merge";
 
 export type ClientHcpSyncResult = {
   ok: boolean;
@@ -21,15 +21,24 @@ type HcpApiResponse = {
 };
 
 let inflight: Promise<ClientHcpSyncResult> | null = null;
+let inflightForce = false;
 /** One forced re-apply per page load after stale shop-as-customer names are merged. */
 let staleCompanyResyncDone = false;
 
-async function runHcpClientSync(): Promise<ClientHcpSyncResult> {
+async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {
   // subscribeBoard hydrates localStorage on a microtask; wait so skip/force
   // sees lastHcpSyncAt and any leftover "Neighborhood Golf Carts" names.
   await Promise.resolve();
   const snapshot = getBoardSnapshot();
-  if (!shouldFetchHcpJobs(snapshot.lastHcpSyncAt, snapshot.jobs, Date.now(), staleCompanyResyncDone)) {
+  if (
+    !shouldRunHcpClientFetch(
+      snapshot.lastHcpSyncAt,
+      snapshot.jobs,
+      Date.now(),
+      staleCompanyResyncDone,
+      force,
+    )
+  ) {
     return {
       ok: true,
       skipped: true,
@@ -85,15 +94,30 @@ async function runHcpClientSync(): Promise<ClientHcpSyncResult> {
   };
 }
 
-export async function maybeSyncFromHcp(): Promise<ClientHcpSyncResult> {
+export async function syncFromHcp(force = false): Promise<ClientHcpSyncResult> {
   if (typeof window === "undefined") {
     return { ok: true, skipped: true, reason: "server", added: 0, updated: 0, count: 0 };
   }
-  if (inflight) return inflight;
-  inflight = runHcpClientSync().finally(() => {
+  if (inflight && (inflightForce || !force)) return inflight;
+  if (inflight && force && !inflightForce) {
+    await inflight;
+    return syncFromHcp(true);
+  }
+  inflightForce = force;
+  inflight = runHcpClientSync(force).finally(() => {
     inflight = null;
+    inflightForce = false;
   });
   return inflight;
+}
+
+export async function maybeSyncFromHcp(): Promise<ClientHcpSyncResult> {
+  return syncFromHcp(false);
+}
+
+/** Pull-to-refresh / manual sync — hits `/api/jobs/hcp` even after the 7am merge. */
+export async function refreshHcpJobs(): Promise<ClientHcpSyncResult> {
+  return syncFromHcp(true);
 }
 
 export function startHcpMorningSync(

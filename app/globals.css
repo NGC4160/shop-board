@@ -134,34 +134,69 @@
   .board-scroll {
     overflow: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x pan-y;
+  }
+
+  .board-refresh {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-accent);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid transparent;
+  }
+
+  .board-refresh[data-refreshing] {
+    border-bottom-color: var(--color-border);
+  }
+
+  .board-select {
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+  }
+
+  .board-select:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .board-sheet {
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 48rem);
+    width: max(100%, 64rem);
   }
 
   .board-col-customer {
-    width: 22%;
+    width: 18%;
   }
 
   .board-col-job {
-    width: 14%;
+    width: 11%;
   }
 
   .board-col-tech {
-    width: 20%;
+    width: 15%;
   }
 
   .board-col-status {
-    width: 26%;
+    width: 18%;
+  }
+
+  .board-col-next {
+    width: 22%;
   }
 
   .board-col-timeframe {
-    width: 18%;
+    width: 16%;
   }
 
   .board-date {
@@ -197,7 +232,7 @@
     background: var(--color-surface-2);
   }
 
-  @media (min-width: 768px) {
+  @media (min-width: 1280px) {
     .board-sheet {
       width: 100%;
     }
@@ -219,6 +254,7 @@
   .board-col-job,
   .board-col-tech,
   .board-col-status,
+  .board-col-next,
   .board-col-timeframe {
     width: auto !important;
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import {
   PIPELINE_STATUSES,
   PRIMARY_TECHS,
@@ -27,10 +27,11 @@ type BoardTableProps = {
   jobs: CartJob[];
   allJobs: CartJob[];
   onChange: (id: string, patch: Partial<CartJob>) => boolean;
+  onRemove: (job: CartJob) => void;
   focusId?: string | null;
 };
 
-export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps) {
+export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: BoardTableProps) {
   return (
     <table className="board-sheet text-left">
       <colgroup>
@@ -38,6 +39,7 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
         <col className="board-col-job" />
         <col className="board-col-tech" />
         <col className="board-col-status" />
+        <col className="board-col-next" />
         <col className="board-col-timeframe" />
       </colgroup>
       <thead className="text-sm">
@@ -55,6 +57,9 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
             <ColumnLabel>Current Status</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
+            <ColumnLabel>Next step</ColumnLabel>
+          </th>
+          <th className="board-sticky-head border-b border-border px-1 py-1">
             <ColumnLabel>Timeframe</ColumnLabel>
           </th>
         </tr>
@@ -63,11 +68,24 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
         {jobs.map((job) => (
           <tr key={job.id} className="align-top">
             <td className="board-sticky-customer z-10 border-r border-b border-border px-1 py-1">
-              <CustomerNameField
-                job={job}
-                onChange={onChange}
-                autoFocus={focusId === job.id}
-              />
+              <div className="flex min-w-0 items-start gap-1">
+                <div className="min-w-0 flex-1">
+                  <CustomerNameField
+                    job={job}
+                    onChange={onChange}
+                    autoFocus={focusId === job.id}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove(job)}
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-subtle hover:bg-surface-3 hover:text-danger"
+                  title="Remove from board"
+                  aria-label={`Remove ${job.customerName || "job"} from the board`}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
             </td>
             <td className="border-b border-border px-1 py-1">
               <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
@@ -91,6 +109,9 @@ export function BoardTable({ jobs, allJobs, onChange, focusId }: BoardTableProps
                 selectClassName={cn("font-semibold", STATUS_CHIP[statusTone(job.status)])}
                 onChange={(status) => onChange(job.id, { status })}
               />
+            </td>
+            <td className="border-b border-border px-1 py-1">
+              <NextStepField job={job} onChange={onChange} />
             </td>
             <td className="border-b border-border px-1 py-1">
               <TimeframeField job={job} onChange={onChange} />
@@ -139,6 +160,46 @@ export function DraftComposer({
         </button>
       </div>
     </div>
+  );
+}
+
+function NextStepField({
+  job,
+  onChange,
+}: {
+  job: CartJob;
+  onChange: (id: string, patch: Partial<CartJob>) => boolean;
+}) {
+  const [draft, setDraft] = useState(job.nextAction);
+  const [seen, setSeen] = useState(job.nextAction);
+
+  if (job.nextAction !== seen) {
+    setSeen(job.nextAction);
+    setDraft(job.nextAction);
+  }
+
+  const commit = (raw: string) => {
+    const next = raw.trim();
+    setDraft(next);
+    if (next !== job.nextAction) onChange(job.id, { nextAction: next });
+  };
+
+  return (
+    <input
+      aria-label="Next step"
+      value={draft}
+      placeholder="Next step"
+      autoComplete="off"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={(event) => commit(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          commit(event.currentTarget.value);
+          event.currentTarget.blur();
+        }
+      }}
+      className="h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-base text-foreground"
+    />
   );
 }
 

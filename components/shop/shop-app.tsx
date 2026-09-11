@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast, Toaster } from "sonner";
 import {
   customerNameError,
@@ -12,15 +12,23 @@ import {
 } from "@/lib/jobs";
 import {
   createDraftJob,
+  deleteJob,
   getBoardSnapshot,
   getServerBoardSnapshot,
   insertJob,
   subscribeBoard,
+  undoDelete,
   updateJob,
 } from "@/lib/board-store";
 import { sortJobsByJobNumber } from "@/lib/sort";
-import { startHcpMorningSync, type ClientHcpSyncResult } from "@/lib/hcp-client";
+import {
+  refreshHcpJobs,
+  startHcpMorningSync,
+  type ClientHcpSyncResult,
+} from "@/lib/hcp-client";
 import { BoardTable, DraftComposer } from "@/components/shop/board-table";
+import { RemoveConfirm } from "@/components/shop/remove-confirm";
+import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
 
 export function ShopApp() {
   const board = useSyncExternalStore(
@@ -30,23 +38,50 @@ export function ShopApp() {
   );
   const [draft, setDraft] = useState<CartJob | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const scrollRef = useRef<HTMLElement>(null);
+
+  const reportSync = useCallback((result: ClientHcpSyncResult, forced: boolean) => {
+    if (!result.ok) {
+      toast.error(result.error || "Housecall Pro sync failed");
+      return;
+    }
+    if (result.skipped) {
+      if (forced) {
+        toast(result.reason || "Housecall Pro sync skipped");
+      }
+      return;
+    }
+    if (result.added || result.updated) {
+      toast(`Housecall Pro · ${result.added} new, ${result.updated} updated`);
+      return;
+    }
+    if (forced) toast("Housecall Pro · up to date");
+  }, []);
 
   useEffect(() => {
     let errorToasted = false;
     return startHcpMorningSync((result: ClientHcpSyncResult) => {
       if (result.skipped) return;
-      if (!result.ok) {
-        if (!errorToasted) {
-          errorToasted = true;
-          toast.error(result.error || "Housecall Pro sync failed");
-        }
-        return;
-      }
-      if (result.added || result.updated) {
-        toast(`Housecall Pro · ${result.added} new, ${result.updated} updated`);
-      }
+      if (!result.ok && errorToasted) return;
+      if (!result.ok) errorToasted = true;
+      reportSync(result, false);
     });
-  }, []);
+  }, [reportSync]);
+
+  const onPullRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const result = await refreshHcpJobs();
+      reportSync(result, true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, reportSync]);
+
+  const { pull, armed } = usePullToRefresh(scrollRef, onPullRefresh, refreshing);
 
   const startDraft = useCallback(() => {
     if (draft) {
@@ -80,6 +115,11 @@ export function ShopApp() {
         event.preventDefault();
         startDraft();
       }
+      if (event.key === "Escape" && pendingRemove) {
+        event.preventDefault();
+        setPendingRemove(null);
+        return;
+      }
       if (event.key === "Escape" && draft && isBlankIdentity(draft)) {
         setDraft(null);
         setFocusId(null);
@@ -87,7 +127,7 @@ export function ShopApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [startDraft, draft]);
+  }, [startDraft, draft, pendingRemove]);
 
   useEffect(() => {
     const current = draft;
@@ -163,7 +203,17 @@ export function ShopApp() {
         </div>
       ) : null}
 
-      <main className="board-scroll min-h-0 flex-1">
+      <div
+        className="board-refresh no-print"
+        data-refreshing={refreshing || undefined}
+        data-testid="hcp-refresh"
+        aria-live="polite"
+        style={{ height: refreshing ? 44 : pull }}
+      >
+        {refreshing ? "Syncing Housecall Pro…" : armed ? "Release to sync" : pull > 16 ? "Pull to sync" : null}
+      </div>
+
+      <main ref={scrollRef} className="board-scroll min-h-0 flex-1">
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
           NGC Shop Board
         </p>
@@ -173,7 +223,7 @@ export function ShopApp() {
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
             <p className="font-display text-2xl font-semibold">No carts on the board</p>
             <p className="mt-2 text-sm text-muted">
-              New carts come from Housecall Pro morning sync. Press{" "}
+              New carts come from Housecall Pro morning sync. Pull down to sync, or press{" "}
               <kbd className="rounded-sm border border-border px-1">N</kbd> to add one locally.
             </p>
           </div>
@@ -182,10 +232,29 @@ export function ShopApp() {
             jobs={visible}
             allJobs={board.jobs}
             onChange={onChange}
+            onRemove={setPendingRemove}
             focusId={focusId}
           />
         )}
       </main>
+
+      {pendingRemove ? (
+        <RemoveConfirm
+          job={pendingRemove}
+          onKeep={() => setPendingRemove(null)}
+          onRemove={() => {
+            const removed = pendingRemove;
+            deleteJob(removed.id);
+            setPendingRemove(null);
+            toast(`Removed ${removed.customerName || "job"} from the board`, {
+              action: {
+                label: "Undo",
+                onClick: () => undoDelete(),
+              },
+            });
+          }}
+        />
+      ) : null}
     </div>
   );
 }
