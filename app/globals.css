@@ -176,6 +176,8 @@
   }
 
   .board-sheet {
+    --board-index-w: 2.75rem;
+    --board-customer-w: 14rem;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
@@ -183,15 +185,15 @@
   }
 
   .board-col-index {
-    width: 2.75rem;
+    width: var(--board-index-w);
+  }
+
+  .board-col-customer {
+    width: var(--board-customer-w);
   }
 
   .board-col-job {
     width: 12%;
-  }
-
-  .board-col-customer {
-    width: 18%;
   }
 
   .board-col-tech {
@@ -247,10 +249,25 @@
     background: var(--color-surface-2);
   }
 
+  .board-sticky-customer {
+    position: sticky;
+    left: var(--board-index-w);
+    z-index: 11;
+    background: var(--color-surface);
+  }
+
+  .board-sticky-customer-head {
+    position: sticky;
+    top: 0;
+    left: var(--board-index-w);
+    z-index: 31;
+    background: var(--color-surface-2);
+  }
+
   .board-sticky-job {
     position: sticky;
-    left: 2.75rem;
-    z-index: 11;
+    left: calc(var(--board-index-w) + var(--board-customer-w));
+    z-index: 10;
     background: var(--color-surface);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
   }
@@ -258,8 +275,8 @@
   .board-sticky-job-head {
     position: sticky;
     top: 0;
-    left: 2.75rem;
-    z-index: 31;
+    left: calc(var(--board-index-w) + var(--board-customer-w));
+    z-index: 30;
     background: var(--color-surface-2);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
   }
@@ -301,6 +318,8 @@
 
   .board-sticky-index,
   .board-sticky-index-head,
+  .board-sticky-customer,
+  .board-sticky-customer-head,
   .board-sticky-job,
   .board-sticky-job-head,
   .board-sticky-head {
