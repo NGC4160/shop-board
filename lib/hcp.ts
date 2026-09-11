@@ -197,10 +197,36 @@ export function isOpenHcpWorkStatus(workStatus: string): boolean {
   return !CLOSED_WORK_STATUSES.has(normalized);
 }
 
+/** Exact shop-as-customer string from the old company-first HCP mapping bug. */
+export const SHOP_CUSTOMER_NAME = "Neighborhood Golf Carts";
+
+/**
+ * True for "Neighborhood Golf Carts" and close variants (case, punctuation,
+ * trailing "LLC", singular "Cart"). Real customer companies must not match.
+ */
+export function isShopCustomerName(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return (
+    normalized === "neighborhood golf carts" ||
+    normalized === "neighborhood golf cart" ||
+    normalized.startsWith("neighborhood golf cart")
+  );
+}
+
+function usableHcpCustomerName(value: unknown): string {
+  const text = asString(value);
+  if (!text || isShopCustomerName(text)) return "";
+  return text;
+}
+
 /**
  * Residential HCP customers often have the shop (or another company string)
- * filled on the company fields. Prefer a real person when first or last name
- * is present. Company is only used when there is no person name. Never invent.
+ * filled on the company / display fields. Prefer a real person when first or
+ * last name is present. Never use the shop name as customerName — fall through
+ * to other person/display/company fields. Never invent.
  */
 export function customerNameFromHcp(customer: unknown): string {
   const record = asRecord(customer);
@@ -208,10 +234,13 @@ export function customerNameFromHcp(customer: unknown): string {
   const person = [asString(record.first_name), asString(record.last_name)]
     .filter(Boolean)
     .join(" ");
-  if (person) return person;
-  const labeled = asString(record.display_name) || asString(record.name);
-  if (labeled) return labeled;
-  return asString(record.company) || asString(record.company_name);
+  if (person && !isShopCustomerName(person)) return person;
+  return (
+    usableHcpCustomerName(record.display_name) ||
+    usableHcpCustomerName(record.name) ||
+    usableHcpCustomerName(record.company) ||
+    usableHcpCustomerName(record.company_name)
+  );
 }
 
 /**

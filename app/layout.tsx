@@ -31,15 +31,18 @@ export const viewport: Viewport = {
   initialScale: 1,
   themeColor: "#0c0e0a",
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${display.variable} ${mono.variable} h-full antialiased`}
+      className={`${sans.variable} ${display.variable} ${mono.variable} h-full max-w-full overflow-x-hidden antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background text-foreground">{children}</body>
+      <body className="flex min-h-full min-w-0 max-w-full flex-col overflow-x-hidden bg-background text-foreground">
+        {children}
+      </body>
     </html>
   );
 }

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   hasStaleHcpCompanyCustomerName,
+  isHcpTrackedJob,
   mergeHcpJobs,
+  nextCustomerNameFromHcp,
   shouldFetchHcpJobs,
   shouldRunHcpClientFetch,
   STALE_HCP_COMPANY_CUSTOMER,
@@ -129,9 +131,10 @@ describe("mergeHcpJobs", () => {
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
   });
 
-  it("treats only the exact shop company string as stale", () => {
+  it("treats the shop company string and close variants as stale", () => {
     assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: STALE_HCP_COMPANY_CUSTOMER }]), true);
-    assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: "neighborhood golf carts" }]), false);
+    assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: "neighborhood golf carts" }]), true);
+    assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: "Neighborhood Golf Carts LLC" }]), true);
     assert.equal(hasStaleHcpCompanyCustomerName([{ customerName: "Mike Landry" }]), false);
     assert.equal(hasStaleHcpCompanyCustomerName([]), false);
   });
@@ -201,6 +204,108 @@ describe("mergeHcpJobs", () => {
     ]);
     assert.equal(updated, 0);
     assert.equal(jobs[0].customerName, "Mike Landry");
+  });
+
+  it("drops finished HCP jobs and shop-name orphans that are not in the open pull", () => {
+    const now = Date.parse("2026-09-11T12:00:00Z");
+    const open = {
+      ...seedJobs[0],
+      jobNumber: "17428",
+      customerName: "Susie Malloy",
+      nextAction: "Call when parts come in",
+      timeExpectation: "2026-09-18",
+      history: [
+        { at: now - 1000, kind: "created" as const, text: "Added from Housecall Pro" },
+      ],
+    };
+    const finishedShopName = {
+      ...seedJobs[0],
+      id: "hcp-17429",
+      jobNumber: "17429",
+      customerName: "Neighborhood Golf Carts",
+      nextAction: "Do not keep this",
+    };
+    const finishedPerson = {
+      ...seedJobs[1],
+      id: "local-17447",
+      jobNumber: "17447",
+      customerName: "Christopher Falvey",
+      history: [
+        { at: now - 2000, kind: "created" as const, text: "Added from Housecall Pro" },
+      ],
+    };
+    const localOnly = {
+      ...seedJobs[2],
+      id: "local-add",
+      jobNumber: "19992",
+      customerName: "Walk-in Cart",
+      nextAction: "Write up in Housecall",
+    };
+    const { jobs, added, updated, removed } = mergeHcpJobs(
+      [open, finishedShopName, finishedPerson, localOnly],
+      [
+        {
+          hcpId: "hcp-17428",
+          jobNumber: "17428",
+          customerName: "Susie Malloy",
+          phone: "",
+          status: "In Progress",
+          statusIsPipeline: false,
+          primaryTech: "",
+        },
+      ],
+      now,
+    );
+    assert.equal(added, 0);
+    assert.equal(updated, 0);
+    assert.equal(removed, 2);
+    assert.deepEqual(
+      jobs.map((job) => job.jobNumber).sort(),
+      ["17428", "19992"],
+    );
+    const keptOpen = jobs.find((job) => job.jobNumber === "17428");
+    assert.equal(keptOpen?.nextAction, "Call when parts come in");
+    assert.equal(keptOpen?.timeExpectation, "2026-09-18");
+    assert.equal(jobs.some((job) => job.jobNumber === "17429"), false);
+    assert.equal(jobs.some((job) => job.jobNumber === "17447"), false);
+  });
+
+  it("clears a leftover shop customer name when HCP sends an empty one", () => {
+    const local = [
+      {
+        ...seedJobs[0],
+        jobNumber: "17428",
+        customerName: "Neighborhood Golf Carts, LLC",
+      },
+    ];
+    const { jobs, updated } = mergeHcpJobs(local, [
+      {
+        hcpId: "hcp-17428",
+        jobNumber: "17428",
+        customerName: "  ",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    assert.equal(updated, 1);
+    assert.equal(jobs[0].customerName, "");
+  });
+
+  it("classifies HCP-tracked rows and shop-name overwrite", () => {
+    assert.equal(isHcpTrackedJob({ id: "hcp-abc" }), true);
+    assert.equal(isHcpTrackedJob({ id: "seed-1842", history: [] }), false);
+    assert.equal(
+      isHcpTrackedJob({
+        id: "local-1",
+        history: [{ text: "Added from Housecall Pro" }],
+      }),
+      true,
+    );
+    assert.equal(nextCustomerNameFromHcp("Brent Leguin", "Neighborhood Golf Carts"), "Brent Leguin");
+    assert.equal(nextCustomerNameFromHcp("  ", "Neighborhood Golf Carts"), "");
+    assert.equal(nextCustomerNameFromHcp("", "Susie Malloy"), "Susie Malloy");
   });
 
   it("drops live Add-cart ghosts and does not keep epoch stage ages", () => {

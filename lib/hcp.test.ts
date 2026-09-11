@@ -4,6 +4,7 @@ import {
   buildHcpJobsListUrl,
   customerNameFromHcp,
   fetchHcpOpenJobs,
+  isShopCustomerName,
   formatHcpHttpError,
   hcpErrorDetail,
   isOpenHcpWorkStatus,
@@ -49,6 +50,16 @@ describe("buildHcpJobsListUrl", () => {
   });
 });
 
+describe("isShopCustomerName", () => {
+  it("matches the shop and close variants only", () => {
+    assert.equal(isShopCustomerName("Neighborhood Golf Carts"), true);
+    assert.equal(isShopCustomerName("  neighborhood-golf-carts  "), true);
+    assert.equal(isShopCustomerName("Neighborhood Golf Carts LLC"), true);
+    assert.equal(isShopCustomerName("The Landing HOA"), false);
+    assert.equal(isShopCustomerName("Brent Leguin"), false);
+  });
+});
+
 describe("customerNameFromHcp", () => {
   it("prefers first + last name over company", () => {
     assert.equal(
@@ -86,6 +97,33 @@ describe("customerNameFromHcp", () => {
     assert.equal(
       customerNameFromHcp({ company_name: "Fairway Estates" }),
       "Fairway Estates",
+    );
+  });
+
+  it("never uses Neighborhood Golf Carts or close variants as the customer", () => {
+    assert.equal(
+      customerNameFromHcp({
+        first_name: "",
+        last_name: "",
+        company: "Neighborhood Golf Carts",
+        company_name: "Neighborhood Golf Carts",
+      }),
+      "",
+    );
+    assert.equal(
+      customerNameFromHcp({
+        display_name: "Neighborhood Golf Carts LLC",
+        company: "The Landing HOA",
+      }),
+      "The Landing HOA",
+    );
+    assert.equal(
+      customerNameFromHcp({
+        first_name: "Neighborhood Golf Carts",
+        last_name: "",
+        display_name: "Brent Leguin",
+      }),
+      "Brent Leguin",
     );
   });
 
