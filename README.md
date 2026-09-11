@@ -23,7 +23,7 @@ Every floor field edits **inline**. There is no top chrome (no Add cart button, 
 
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
 - **Keyboard:** `N` add cart locally, `Esc` abandon a blank add
-- **Pull down** at the top of the list to sync Housecall Pro now (same `/api/jobs/hcp` merge as morning sync). A “Syncing Housecall Pro…” bar shows while it runs.
+- **Sync** (compact control at the top of the spreadsheet) pulls open Housecall Pro jobs now — same `/api/jobs/hcp` merge as morning sync, forced even after the 7am run. Status shows Syncing…, then job count / last sync time, or the API error. Phones can still pull down to sync.
 - **Remove** a row with the trash control on the customer cell (confirm first). Board-only — the Housecall Pro job is not deleted.
 
 Tablet and phone keep the same table (horizontal scroll if needed) so rows stay readable. Customer name stays sticky on the left.
@@ -100,7 +100,7 @@ Each shop tablet/TV then merges that job list into the local board:
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented. A leftover shop-as-customer name is cleared instead of kept.
 - If the board still has any customer name that is `Neighborhood Golf Carts` or a close variant (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
 - Jobs that came from Housecall Pro (or still show the shop as the customer) and are **not** in the open HCP pull drop off the board — finished / canceled / paid-complete work leaves with the sync. Next step and Timeframe are kept only on jobs that remain open. Local-only `N` adds that were never synced from HCP stay.
-- **Pull-to-refresh** on the spreadsheet forces the same `/api/jobs/hcp` merge even if the board already synced after 7:00 AM today. Morning sync still runs on its own schedule.
+- **Sync** (or pull-to-refresh) on the spreadsheet forces the same `/api/jobs/hcp` merge even if the board already synced after 7:00 AM today. Morning sync still runs on its own schedule.
 
 ## Removing a job from the board
 
