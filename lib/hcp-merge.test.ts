@@ -275,6 +275,162 @@ describe("mergeHcpJobs", () => {
     assert.equal(nextHcpScheduledStartAt(null, null), null);
     assert.equal(nextHcpScheduledStartAt(undefined, 1_700_000_000_000), 1_700_000_000_000);
     assert.equal(nextHcpScheduledStartAt(null, 1_700_000_000_000, true), null);
+    assert.equal(nextHcpScheduledStartAt(1_700_000_000_000, 1_600_000_000_000, true), null);
+  });
+
+  it("clears Date started when HCP is Unscheduled even if leftover scheduled_start is present", () => {
+    const leftover = Date.parse("2026-09-14T16:00:00.000Z");
+    const first = mergeHcpJobs([], [
+      {
+        hcpId: "job_fortenberry",
+        jobNumber: "173112",
+        customerName: "Joe Fortenberry",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "Hayden Silva",
+        scheduledStart: leftover,
+        schedulePresent: true,
+      },
+    ]);
+    assert.equal(first.jobs[0].hcpScheduledStartAt, leftover);
+    const second = mergeHcpJobs(first.jobs, [
+      {
+        hcpId: "job_fortenberry",
+        jobNumber: "173112",
+        customerName: "Joe Fortenberry",
+        phone: "",
+        status: "Unscheduled",
+        statusIsPipeline: false,
+        primaryTech: "Hayden Silva",
+        scheduledStart: leftover,
+        schedulePresent: true,
+      },
+    ]);
+    assert.equal(second.jobs[0].status, "Scheduled");
+    assert.equal(second.jobs[0].hcpScheduledStartAt, null);
+  });
+
+  it("clears Date started when the board stays Unscheduled (live Graham / Fortenberry)", () => {
+    const grahamStart = Date.parse("2026-09-11T15:30:00.000Z");
+    const fortnStart = Date.parse("2026-09-14T16:00:00.000Z");
+    const local = [
+      {
+        ...seedJobs[0],
+        id: "hcp-job_17266-2",
+        jobNumber: "17266-2",
+        customerName: "Von Graham",
+        status: "Unscheduled",
+        primaryTech: "Unassigned",
+        hcpScheduledStartAt: grahamStart,
+        history: [{ at: 1, kind: "created" as const, text: "Added from Housecall Pro" }],
+      },
+      {
+        ...seedJobs[0],
+        id: "hcp-job_173112",
+        jobNumber: "173112",
+        customerName: "Joe Fortenberry",
+        status: "Unscheduled",
+        primaryTech: "Unassigned",
+        hcpScheduledStartAt: fortnStart,
+        history: [{ at: 1, kind: "created" as const, text: "Added from Housecall Pro" }],
+      },
+    ];
+    const { jobs, updated } = mergeHcpJobs(local, [
+      {
+        hcpId: "job_17266-2",
+        jobNumber: "17266-2",
+        customerName: "Von Graham",
+        phone: "",
+        status: "In Progress",
+        statusIsPipeline: false,
+        primaryTech: "Hayden Silva",
+        scheduledStart: grahamStart,
+        schedulePresent: true,
+      },
+      {
+        hcpId: "job_173112",
+        jobNumber: "173112",
+        customerName: "Joe Fortenberry",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "Hayden Silva",
+        scheduledStart: fortnStart,
+        schedulePresent: true,
+      },
+    ]);
+    const graham = jobs.find((job) => job.jobNumber === "17266-2");
+    const fortn = jobs.find((job) => job.jobNumber === "173112");
+    assert.equal(graham?.status, "Unscheduled");
+    assert.equal(graham?.hcpScheduledStartAt, null);
+    assert.equal(fortn?.status, "Unscheduled");
+    assert.equal(fortn?.hcpScheduledStartAt, null);
+    assert.equal(updated, 2);
+  });
+
+  it("keeps Date started on Scheduled / In Progress when HCP sends a real start", () => {
+    const started = Date.parse("2025-02-06T21:55:00.000Z");
+    const { jobs } = mergeHcpJobs(
+      [
+        {
+          ...seedJobs[0],
+          id: "hcp-job_645",
+          jobNumber: "645",
+          customerName: "Alexis Hocevar",
+          status: "Scheduled",
+          hcpScheduledStartAt: null,
+          history: [{ at: 1, kind: "created" as const, text: "Added from Housecall Pro" }],
+        },
+      ],
+      [
+        {
+          hcpId: "job_645",
+          jobNumber: "645",
+          customerName: "Alexis Hocevar",
+          phone: "",
+          status: "Scheduled",
+          statusIsPipeline: false,
+          primaryTech: "Marlon Gray",
+          scheduledStart: started,
+          schedulePresent: true,
+        },
+      ],
+    );
+    assert.equal(jobs[0].status, "Scheduled");
+    assert.equal(jobs[0].hcpScheduledStartAt, started);
+  });
+
+  it("clears a stored start when a later payload omits schedule after the job is Unscheduled", () => {
+    const started = Date.parse("2026-09-11T15:30:00.000Z");
+    const first = mergeHcpJobs([], [
+      {
+        hcpId: "job_graham",
+        jobNumber: "17266-2",
+        customerName: "Von Graham",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+        scheduledStart: started,
+        schedulePresent: true,
+      },
+    ]);
+    const second = mergeHcpJobs(first.jobs, [
+      {
+        hcpId: "job_graham",
+        jobNumber: "17266-2",
+        customerName: "Von Graham",
+        phone: "",
+        status: "Unscheduled",
+        statusIsPipeline: true,
+        primaryTech: "",
+        scheduledStart: null,
+        schedulePresent: false,
+      },
+    ]);
+    assert.equal(second.jobs[0].status, "Unscheduled");
+    assert.equal(second.jobs[0].hcpScheduledStartAt, null);
   });
 
   it("treats the shop company string and close variants as stale", () => {

@@ -649,6 +649,18 @@ export function isClosedStatus(status: string): boolean {
 }
 
 /**
+ * Board pipeline Unscheduled, or HCP work_status unscheduled / needs scheduling.
+ * Date started must show — and Sync must clear a leftover scheduled_start.
+ */
+export function isUnscheduledStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, " ");
+  return normalized === "unscheduled" || normalized === "needs scheduling";
+}
+
+/**
  * Empty is allowed. Anything else must be a real calendar date (`YYYY-MM-DD`).
  * Phrases, "999", and relative text are not stored.
  */
