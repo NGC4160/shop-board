@@ -23,7 +23,7 @@ type HcpApiResponse = {
 
 let inflight: Promise<ClientHcpSyncResult> | null = null;
 let inflightForce = false;
-/** One forced re-apply per page load after stale shop-as-customer names are merged. */
+/** One forced re-apply per page load after stale shop names / missing schedule starts merge. */
 let staleCompanyResyncDone = false;
 
 async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {

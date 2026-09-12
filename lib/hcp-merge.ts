@@ -28,6 +28,31 @@ export function hasStaleHcpCompanyCustomerName(
   return jobs.some((job) => isShopCustomerName(job.customerName));
 }
 
+export type HcpReapplyJob = {
+  id?: string;
+  customerName?: string | null;
+  status?: string | null;
+  hcpScheduledStartAt?: number | null;
+  history?: readonly { text?: string }[];
+};
+
+/**
+ * True when an HCP-tracked Scheduled / In Progress row has no stored
+ * `hcpScheduledStartAt`. After the `hcpCreatedAt` → `hcpScheduledStartAt`
+ * rename, a hard refresh keeps lastHcpSyncAt (morning already ran) and
+ * upgradeJob drops the old field — Date started shows — until we re-pull.
+ * Local-only seeds and Unscheduled jobs are not a reason to refetch.
+ */
+export function hasMissingHcpScheduledStarts(jobs: readonly HcpReapplyJob[]): boolean {
+  return jobs.some((job) => {
+    if (!isHcpTrackedJob({ id: job.id ?? "", history: job.history })) return false;
+    const status = (job.status ?? "").trim().toLowerCase();
+    if (status !== "scheduled" && status !== "in progress") return false;
+    const start = job.hcpScheduledStartAt;
+    return !(typeof start === "number" && Number.isFinite(start) && start > 0);
+  });
+}
+
 /** HCP-originated row, or any later merge that wrote a Housecall Pro history line. */
 export function isHcpTrackedJob(job: {
   id: string;
@@ -76,24 +101,25 @@ function scheduleStartCleared(hcp: HcpOpenJob): boolean {
 /**
  * Morning window from shouldSyncHcpNow, plus a one-shot bypass when the board
  * still has a shop-as-customer name (Neighborhood Golf Carts or a close
- * variant). After that re-apply, pass staleCompanyResyncDone so leftover
- * real company rows do not refetch every minute.
+ * variant) or HCP-tracked Scheduled / In Progress rows with no stored
+ * schedule start (post-rename localStorage). After that re-apply, pass
+ * staleCompanyResyncDone so leftover rows do not refetch every minute.
  */
 export function shouldFetchHcpJobs(
   lastSyncAt: number | null | undefined,
-  jobs: readonly { customerName?: string | null }[],
+  jobs: readonly HcpReapplyJob[],
   now = Date.now(),
   staleCompanyResyncDone = false,
 ): boolean {
   if (shouldSyncHcpNow(lastSyncAt, now)) return true;
   if (staleCompanyResyncDone) return false;
-  return hasStaleHcpCompanyCustomerName(jobs);
+  return hasStaleHcpCompanyCustomerName(jobs) || hasMissingHcpScheduledStarts(jobs);
 }
 
 /** Morning gate plus an explicit pull-to-refresh bypass. */
 export function shouldRunHcpClientFetch(
   lastSyncAt: number | null | undefined,
-  jobs: readonly { customerName?: string | null }[],
+  jobs: readonly HcpReapplyJob[],
   now = Date.now(),
   staleCompanyResyncDone = false,
   force = false,
@@ -184,11 +210,13 @@ export function mergeHcpJobs(
       scheduleStartCleared(hcp),
     );
     if (!statusChanged && !customerChanged && !phoneChanged) {
+      const startChanged = nextStart !== (existing.hcpScheduledStartAt ?? null);
       merged.push({
         ...existing,
         hcpScheduledStartAt: nextStart,
         statusChangedAt: saneStatusChangedAt(existing, now),
       });
+      if (startChanged) updated += 1;
       continue;
     }
 

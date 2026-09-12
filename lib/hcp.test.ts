@@ -49,6 +49,7 @@ describe("buildHcpJobsListUrl", () => {
     assert.equal([...url.searchParams.keys()].sort().join(","), "page,page_size");
     assert.equal(url.search.includes("sort_"), false);
     assert.equal(url.search.includes("work_status"), false);
+    assert.equal(url.search.includes("expand"), false);
   });
 });
 
@@ -191,6 +192,39 @@ describe("scheduledStartFromHcp", () => {
     assert.equal(hcpJobHasSchedule({ schedule: null }), true);
     assert.equal(hcpJobHasSchedule({}), false);
   });
+
+  it("reads a live list-shaped Scheduled job (schedule present with start)", () => {
+    // Proven on GET /jobs?page=&page_size= for Alexis Hocevar / 645 (no expand).
+    const iso = "2025-02-06T21:55:00.000Z";
+    const raw = {
+      id: "job_44cef8f8597245d2bc95c7cd0cf11e50",
+      invoice_number: "645",
+      work_status: "scheduled",
+      schedule: {
+        scheduled_start: iso,
+        scheduled_end: "2025-02-06T22:55:00.000Z",
+        arrival_window: 0,
+      },
+      customer: { first_name: "Alexis", last_name: "Hocevar" },
+    };
+    assert.equal(scheduledStartFromHcp(raw), Date.parse(iso));
+    assert.equal(hcpJobHasSchedule(raw), true);
+    assert.equal(mapHcpJob(raw)?.scheduledStart, Date.parse(iso));
+    assert.equal(mapHcpJob(raw)?.schedulePresent, true);
+  });
+
+  it("treats schedule present with empty start as unscheduled, not omitted", () => {
+    const raw = {
+      invoice_number: "173129",
+      work_status: "unscheduled",
+      schedule: { scheduled_start: null, scheduled_end: null, arrival_window: 0 },
+      customer: { first_name: "Diane", last_name: "Rodrigue" },
+    };
+    assert.equal(scheduledStartFromHcp(raw), null);
+    assert.equal(hcpJobHasSchedule(raw), true);
+    assert.equal(mapHcpJob(raw)?.scheduledStart, null);
+    assert.equal(mapHcpJob(raw)?.schedulePresent, true);
+  });
 });
 
 describe("isOpenHcpWorkStatus", () => {
@@ -261,6 +295,7 @@ describe("fetchHcpOpenJobs", () => {
             id: "open-1",
             invoice_number: "1842",
             work_status: "in progress",
+            schedule: { scheduled_start: "2026-04-02T14:15:22Z", scheduled_end: "2026-04-02T15:15:22Z" },
             customer: { first_name: "Mike", last_name: "Landry" },
           },
           {
@@ -299,6 +334,10 @@ describe("fetchHcpOpenJobs", () => {
         { jobNumber: "1851", status: "Awaiting QC" },
       ],
     );
+    assert.equal(result.jobs[0].scheduledStart, Date.parse("2026-04-02T14:15:22Z"));
+    assert.equal(result.jobs[0].schedulePresent, true);
+    assert.equal(result.jobs[1].scheduledStart, null);
+    assert.equal(result.jobs[1].schedulePresent, false);
     assert.equal(mapHcpJob({ invoice_number: "1801", work_status: "completed" }), null);
   });
 
