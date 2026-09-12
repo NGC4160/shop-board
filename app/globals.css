@@ -179,6 +179,7 @@
     --board-index-w: 2.75rem;
     --board-created-w: 7.5rem;
     --board-customer-w: 14rem;
+    --board-job-w: 8rem;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
@@ -198,7 +199,7 @@
   }
 
   .board-col-job {
-    width: 12%;
+    width: var(--board-job-w);
   }
 
   .board-col-tech {
@@ -318,6 +319,20 @@
     top: 0;
     z-index: 20;
     background: var(--color-surface-2);
+  }
+
+  @media (max-width: 767px) {
+    .board-sheet {
+      --board-index-w: 2.25rem;
+      --board-created-w: 5.75rem;
+      --board-customer-w: 9rem;
+      --board-job-w: 5.75rem;
+    }
+
+    .board-created-date {
+      padding-inline: 0.25rem;
+      font-size: 0.75rem;
+    }
   }
 
   @media (min-width: 1280px) {
