@@ -35,7 +35,7 @@ export function formatDay(ms: number): string {
 }
 
 /**
- * Shop-floor Housecall Pro created date in America/Chicago.
+ * Shop-floor Date started (HCP `created_at`) in America/Chicago.
  * Missing or invalid timestamps show an em dash — never invent a date.
  */
 export function formatCreatedDate(ms: number | null | undefined): string {

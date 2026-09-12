@@ -49,31 +49,31 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
         <tr>
           <th
             scope="col"
-            className="board-sticky-index-head border-b border-r border-border px-0 py-1"
+            className="board-head border-b border-r border-border px-0 py-1"
           >
             <span className="inline-flex h-9 w-full items-center justify-center text-xs font-semibold tracking-wide text-muted">
               #
             </span>
           </th>
-          <th className="board-sticky-created-head border-b border-r border-border px-1 py-1">
-            <ColumnLabel>Date created</ColumnLabel>
+          <th className="board-head border-b border-r border-border px-1 py-1">
+            <ColumnLabel>Date started</ColumnLabel>
           </th>
-          <th className="board-sticky-customer-head border-b border-r border-border px-1 py-1">
+          <th className="board-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Customer name</ColumnLabel>
           </th>
-          <th className="board-sticky-job-head border-b border-r border-border px-1 py-1">
+          <th className="board-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Job number</ColumnLabel>
           </th>
-          <th className="board-sticky-head border-b border-border px-1 py-1">
+          <th className="board-head border-b border-border px-1 py-1">
             <ColumnLabel>Primary tech</ColumnLabel>
           </th>
-          <th className="board-sticky-head border-b border-border px-1 py-1">
+          <th className="board-head border-b border-border px-1 py-1">
             <ColumnLabel>Current Status</ColumnLabel>
           </th>
-          <th className="board-sticky-head border-b border-border px-1 py-1">
+          <th className="board-head border-b border-border px-1 py-1">
             <ColumnLabel>Next step</ColumnLabel>
           </th>
-          <th className="board-sticky-head border-b border-border px-1 py-1">
+          <th className="board-head border-b border-border px-1 py-1">
             <ColumnLabel>Timeframe</ColumnLabel>
           </th>
         </tr>
@@ -88,7 +88,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
               data-board-row={rowNumber}
               data-job-number={job.jobNumber}
             >
-              <td className="board-sticky-index border-r border-b border-border px-0 py-1">
+              <td className="border-r border-b border-border px-0 py-1">
                 <span
                   className="board-row-index"
                   aria-label={`Board row ${rowNumber}`}
@@ -96,19 +96,19 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                   {rowNumber}
                 </span>
               </td>
-              <td className="board-sticky-created border-r border-b border-border px-1 py-1">
+              <td className="border-r border-b border-border px-1 py-1">
                 <span
                   className="board-created-date"
                   aria-label={
                     job.hcpCreatedAt
-                      ? `Date created ${formatCreatedDate(job.hcpCreatedAt)}`
-                      : "Date created unavailable"
+                      ? `Date started ${formatCreatedDate(job.hcpCreatedAt)}`
+                      : "Date started unavailable"
                   }
                 >
                   {formatCreatedDate(job.hcpCreatedAt)}
                 </span>
               </td>
-              <td className="board-sticky-customer border-r border-b border-border px-1 py-1">
+              <td className="border-r border-b border-border px-1 py-1">
                 <div className="flex min-w-0 items-start gap-1">
                   <div className="min-w-0 flex-1">
                     <CustomerNameField
@@ -128,7 +128,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                   </button>
                 </div>
               </td>
-              <td className="board-sticky-job border-r border-b border-border px-1 py-1">
+              <td className="border-r border-b border-border px-1 py-1">
                 <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
               </td>
               <td className="border-b border-border px-1 py-1">

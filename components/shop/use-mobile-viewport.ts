@@ -42,10 +42,10 @@ function relayoutScroller(scroller: HTMLElement) {
 }
 
 /**
- * iOS Safari: focusing a cell in the wide sticky table often scrolls the
+ * iOS Safari: focusing a cell in the wide table often scrolls the
  * *document* (not just `.board-scroll`). After the keyboard closes, leftover
  * window.scrollX / a stale visualViewport height paints the body background
- * as a black slab and can shove sticky columns off-screen.
+ * as a black slab and can shove the table off-screen.
  */
 export function useMobileViewportRestore(scrollRef: RefObject<HTMLElement | null>) {
   useEffect(() => {
