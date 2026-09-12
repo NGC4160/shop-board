@@ -14,7 +14,7 @@ import {
   statusTone,
   type CartJob,
 } from "@/lib/jobs";
-import { formatCreatedDate } from "@/lib/format";
+import { formatStartedDate } from "@/lib/format";
 import { ComboCell } from "@/components/shop/combo-cell";
 import { cn } from "@/lib/utils";
 
@@ -55,13 +55,13 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
               #
             </span>
           </th>
-          <th className="board-sticky-created-head border-b border-r border-border px-1 py-1">
-            <ColumnLabel>Date created</ColumnLabel>
+          <th className="board-sticky-head border-b border-r border-border px-1 py-1">
+            <ColumnLabel>Date started</ColumnLabel>
           </th>
-          <th className="board-sticky-customer-head border-b border-r border-border px-1 py-1">
+          <th className="board-sticky-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Customer name</ColumnLabel>
           </th>
-          <th className="board-sticky-job-head border-b border-r border-border px-1 py-1">
+          <th className="board-sticky-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Job number</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-border px-1 py-1">
@@ -96,19 +96,19 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                   {rowNumber}
                 </span>
               </td>
-              <td className="board-sticky-created border-r border-b border-border px-1 py-1">
+              <td className="border-r border-b border-border px-1 py-1">
                 <span
                   className="board-created-date"
                   aria-label={
-                    job.hcpCreatedAt
-                      ? `Date created ${formatCreatedDate(job.hcpCreatedAt)}`
-                      : "Date created unavailable"
+                    job.hcpScheduledStartAt
+                      ? `Date started ${formatStartedDate(job.hcpScheduledStartAt)}`
+                      : "Date started unavailable"
                   }
                 >
-                  {formatCreatedDate(job.hcpCreatedAt)}
+                  {formatStartedDate(job.hcpScheduledStartAt)}
                 </span>
               </td>
-              <td className="board-sticky-customer border-r border-b border-border px-1 py-1">
+              <td className="border-r border-b border-border px-1 py-1">
                 <div className="flex min-w-0 items-start gap-1">
                   <div className="min-w-0 flex-1">
                     <CustomerNameField
@@ -128,7 +128,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                   </button>
                 </div>
               </td>
-              <td className="board-sticky-job border-r border-b border-border px-1 py-1">
+              <td className="border-r border-b border-border px-1 py-1">
                 <JobNumberField job={job} jobs={allJobs} onChange={onChange} />
               </td>
               <td className="border-b border-border px-1 py-1">

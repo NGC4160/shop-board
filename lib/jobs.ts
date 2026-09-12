@@ -176,8 +176,8 @@ export type CartJob = {
   createdAt: number;
   updatedAt: number;
   statusChangedAt: number;
-  /** Housecall Pro job `created_at`. Null when unknown — never invented. */
-  hcpCreatedAt: number | null;
+  /** Housecall Pro `schedule.scheduled_start`. Null when unknown — never invented. */
+  hcpScheduledStartAt: number | null;
 };
 
 export type CartJobDraft = {
@@ -217,7 +217,7 @@ const SEED_PLUS_5 = chicagoDayOffset(5);
 function seed(
   partial: Omit<
     CartJob,
-    "history" | "createdAt" | "updatedAt" | "statusChangedAt" | "hcpCreatedAt"
+    "history" | "createdAt" | "updatedAt" | "statusChangedAt" | "hcpScheduledStartAt"
   > & {
     daysAgo: number;
     statusDays: number;
@@ -245,7 +245,7 @@ function seed(
     createdAt,
     updatedAt: statusChangedAt,
     statusChangedAt,
-    hcpCreatedAt: null,
+    hcpScheduledStartAt: null,
     history: [
       { at: createdAt, kind: "created", text: "Added to the board" },
       ...partial.history.map((text, index) => ({
@@ -688,7 +688,7 @@ export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     statusChangedAt: statusChanged,
-    hcpCreatedAt: existing?.hcpCreatedAt ?? null,
+    hcpScheduledStartAt: existing?.hcpScheduledStartAt ?? null,
   };
 }
 
@@ -969,12 +969,12 @@ export function upgradeJob(value: unknown): CartJob | null {
       },
       now,
     ),
-    hcpCreatedAt: parseStoredHcpCreatedAt(job.hcpCreatedAt),
+    hcpScheduledStartAt: parseStoredHcpScheduledStartAt(job.hcpScheduledStartAt),
   };
 }
 
-/** Persist a stored HCP created timestamp. Do not fall back to board `createdAt`. */
-function parseStoredHcpCreatedAt(raw: unknown): number | null {
+/** Persist a stored HCP schedule start. Do not fall back to created_at or board `createdAt`. */
+function parseStoredHcpScheduledStartAt(raw: unknown): number | null {
   const ms = coerceMillis(raw);
   if (ms == null) return null;
   return ms;

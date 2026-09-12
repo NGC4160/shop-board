@@ -18,8 +18,13 @@ export type HcpOpenJob = {
   statusIsPipeline: boolean;
   /** Field tech name when it matches the shop dropdown; else empty. */
   primaryTech: string;
-  /** Housecall Pro job `created_at` millis. Null/omitted when missing — never invented. */
-  createdAt?: number | null;
+  /** Housecall Pro `schedule.scheduled_start` millis. Null when missing — never invented. */
+  scheduledStart?: number | null;
+  /**
+   * True when the job payload included a `schedule` key (object or explicit null).
+   * Used to distinguish “schedule omitted” from “HCP cleared / unscheduled”.
+   */
+  schedulePresent?: boolean;
 };
 
 export type HcpSyncResult =
@@ -261,21 +266,31 @@ export function jobNumberFromHcp(job: unknown): string {
 }
 
 /**
- * Housecall Pro job created timestamp from `created_at` (ISO 8601) or `createdAt`.
- * Never invents a date — missing, blank, or unparseable values are null.
- * Does not fall back to updated_at, schedule, or work_timestamps.
+ * Housecall Pro appointment start from Jobs API `schedule.scheduled_start`.
+ * Official Job schema (Get Jobs / OpenAPI) is:
+ *   schedule: { scheduled_start, scheduled_end, arrival_window }
+ * Never invents a date. Does not read created_at, updated_at, work_timestamps,
+ * appointments[], or undocumented aliases like schedule.start.
  */
-export function createdAtFromHcp(job: unknown): number | null {
+export function scheduledStartFromHcp(job: unknown): number | null {
   const record = asRecord(job);
   if (!record) return null;
-  for (const key of ["created_at", "createdAt"] as const) {
-    const parsed = parseHcpCreatedAt(record[key]);
+  const schedule = asRecord(record.schedule);
+  if (!schedule) return null;
+  for (const key of ["scheduled_start", "scheduledStart"] as const) {
+    const parsed = parseHcpDateTime(schedule[key]);
     if (parsed != null) return parsed;
   }
   return null;
 }
 
-function parseHcpCreatedAt(value: unknown): number | null {
+/** True when the job object included a `schedule` key, even if start is empty. */
+export function hcpJobHasSchedule(job: unknown): boolean {
+  const record = asRecord(job);
+  return Boolean(record && "schedule" in record);
+}
+
+function parseHcpDateTime(value: unknown): number | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -344,7 +359,8 @@ export function mapHcpJob(raw: unknown): HcpOpenJob | null {
     status: pipeline ?? mapped,
     statusIsPipeline: Boolean(pipeline),
     primaryTech: techFromHcp(job),
-    createdAt: createdAtFromHcp(job),
+    scheduledStart: scheduledStartFromHcp(job),
+    schedulePresent: hcpJobHasSchedule(job),
   };
 }
 

@@ -46,20 +46,31 @@ export function nextCustomerNameFromHcp(incoming: string, existing: string): str
 }
 
 /**
- * Incoming HCP `created_at` wins when present. Missing incoming never invents
- * a date and never clears a stored Housecall Pro created timestamp.
+ * Incoming HCP `schedule.scheduled_start` wins when present.
+ * Missing incoming never invents a date. A previously stored start is kept
+ * unless HCP clearly cleared the schedule (`schedule` key present and
+ * `scheduled_start` empty/null) — for example an unscheduled job.
  */
-export function nextHcpCreatedAt(
+export function nextHcpScheduledStartAt(
   incoming: number | null | undefined,
   existing: number | null | undefined,
+  scheduleCleared = false,
 ): number | null {
   if (typeof incoming === "number" && Number.isFinite(incoming) && incoming > 0) {
     return incoming;
   }
+  if (scheduleCleared) return null;
   if (typeof existing === "number" && Number.isFinite(existing) && existing > 0) {
     return existing;
   }
   return null;
+}
+
+function scheduleStartCleared(hcp: HcpOpenJob): boolean {
+  if (typeof hcp.scheduledStart === "number" && Number.isFinite(hcp.scheduledStart) && hcp.scheduledStart > 0) {
+    return false;
+  }
+  return Boolean(hcp.schedulePresent);
 }
 
 /**
@@ -105,8 +116,8 @@ function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
  * HCP customer names overwrite existing board names (so stale values like
  * "Neighborhood Golf Carts" get corrected). Empty HCP names are not invented
  * and do not keep a leftover shop name. Phone / pipeline status still update
- * from HCP. Date created comes from HCP `created_at` when present and is
- * never invented. Tech-entered next action and Timeframe stay only on jobs that
+ * from HCP. Date started comes from HCP `schedule.scheduled_start` when present
+ * and is never invented from created_at. Tech-entered next action and Timeframe stay only on jobs that
  * remain in the open pull. Finished/canceled HCP jobs drop off the board.
  * Local-only N-add / seed rows that were never synced from HCP stay.
  */
@@ -147,8 +158,12 @@ export function mergeHcpJobs(
             text: "Added from Housecall Pro",
           },
         ],
-        createdAt: hcp.createdAt ?? now,
-        hcpCreatedAt: nextHcpCreatedAt(hcp.createdAt, null),
+        createdAt: now,
+        hcpScheduledStartAt: nextHcpScheduledStartAt(
+          hcp.scheduledStart,
+          null,
+          scheduleStartCleared(hcp),
+        ),
         updatedAt: now,
         statusChangedAt: now,
       });
@@ -163,11 +178,15 @@ export function mergeHcpJobs(
     const statusChanged = nextStatus !== existing.status;
     const customerChanged = nextCustomer !== existing.customerName;
     const phoneChanged = nextPhone !== existing.phone;
-    const nextCreated = nextHcpCreatedAt(hcp.createdAt, existing.hcpCreatedAt);
+    const nextStart = nextHcpScheduledStartAt(
+      hcp.scheduledStart,
+      existing.hcpScheduledStartAt,
+      scheduleStartCleared(hcp),
+    );
     if (!statusChanged && !customerChanged && !phoneChanged) {
       merged.push({
         ...existing,
-        hcpCreatedAt: nextCreated,
+        hcpScheduledStartAt: nextStart,
         statusChangedAt: saneStatusChangedAt(existing, now),
       });
       continue;
@@ -190,7 +209,7 @@ export function mergeHcpJobs(
       phone: nextPhone,
       status: nextStatus,
       history,
-      hcpCreatedAt: nextCreated,
+      hcpScheduledStartAt: nextStart,
       statusChangedAt: statusChanged ? now : saneStatusChangedAt(existing, now),
       updatedAt: now,
     });
