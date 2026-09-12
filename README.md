@@ -13,7 +13,7 @@ This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 One dense table on one page. Rows are jobs. Columns are these fields, in this order, always sorted by job number ascending:
 
 1. **#** (sequential board row 1–n)
-2. **Date created** (Housecall Pro job `created_at`, America/Chicago; dash when missing — never invented)
+2. **Date started** (Housecall Pro job `created_at`, America/Chicago; dash when missing — never invented)
 3. **Customer name**
 4. **Job number**
 5. **Primary tech**
@@ -28,7 +28,7 @@ Every floor field edits **inline**. There is no top chrome (no Add cart button, 
 - **Sync** (compact control at the top of the spreadsheet) pulls open Housecall Pro jobs now — same `/api/jobs/hcp` merge as morning sync, forced even after the 7am run. Status shows Syncing…, then job count / last sync time, or the API error. Phones can still pull down to sync.
 - **Remove** a row with the trash control on the customer cell (confirm first). Board-only — the Housecall Pro job is not deleted.
 
-Tablet and phone keep the same table (horizontal scroll if needed) so rows stay readable. Row #, Date created, Customer name, and Job number stay sticky on the left.
+Tablet and phone keep the same table (horizontal scroll if needed) so rows stay readable. Only the sequential row # column stays sticky on the left.
 
 Customer name and job number are required. Empty or whitespace-only values show an inline error and are not saved. Job numbers must be digits or `17312-1` — not `000` or leading zeros. Duplicates are blocked. `N` opens a compact identity composer — not a board row. The cart only appears on the spreadsheet after both fields are valid. Tap away, Escape, or reload while it is still blank and it disappears. It is not stored. Status Other… cannot be an exact Housecall Pro pipeline name — pick that stage from the list.
 
@@ -48,9 +48,9 @@ The board job # is Housecall Pro’s **`invoice_number`** — the number HCP sho
 
 Live NGC invoices are currently **6-digit** (for example `173128`). The 4-digit examples on the local seed board (`1839`, `1842`) are demo data, not a different HCP field.
 
-## Date created
+## Date started
 
-**Date created** is Housecall Pro’s job `created_at` (ISO 8601 on the Jobs API). Sync maps that field through `/api/jobs/hcp` and stores it as `hcpCreatedAt`. The board shows it as a shop-floor date in **America/Chicago** (for example `Sep 12, 2026`).
+**Date started** is Housecall Pro’s job `created_at` (ISO 8601 on the Jobs API). Sync maps that field through `/api/jobs/hcp` and stores it as `hcpCreatedAt`. The board shows it as a shop-floor date in **America/Chicago** (for example `Sep 12, 2026`).
 
 If a job has no `created_at`, the cell is **—**. Sync time and the local board `createdAt` (when the row was added here) are never used as a stand-in. A later sync that omits `created_at` keeps a date that was already stored.
 
@@ -104,7 +104,7 @@ Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handl
 Each shop tablet/TV then merges that job list into the local board:
 
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
-- Housecall Pro updates **job list, customer name, phone**, **Date created** from job `created_at` when the payload includes it, and **pipeline status when the API gives an exact Jobs pipeline name**. Missing `created_at` is stored as empty (shown as —) and is never invented from sync time. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
+- Housecall Pro updates **job list, customer name, phone**, **Date started** from job `created_at` when the payload includes it, and **pipeline status when the API gives an exact Jobs pipeline name**. Missing `created_at` is stored as empty (shown as —) and is never invented from sync time. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented. A leftover shop-as-customer name is cleared instead of kept.
 - If the board still has any customer name that is `Neighborhood Golf Carts` or a close variant (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
 - Jobs that came from Housecall Pro (or still show the shop as the customer) and are **not** in the open HCP pull drop off the board — finished / canceled / paid-complete work leaves with the sync. Next step and Timeframe are kept only on jobs that remain open. Local-only `N` adds that were never synced from HCP stay.
@@ -114,7 +114,7 @@ Each shop tablet/TV then merges that job list into the local board:
 
 There is no Housecall Pro write from this app (the API key is treated as read-only). Delete is **board-only**:
 
-1. Tap the trash icon on the sticky customer cell (44px target). Confirm **Remove**.
+1. Tap the trash icon on the customer cell (44px target). Confirm **Remove**.
 2. The row leaves this device’s `localStorage`. Undo is offered on the toast.
 3. That job number is remembered as dismissed, so the next morning sync or pull-to-refresh will not put it back.
 4. Press `N` and add the same job # locally if you need the row again (that clears the dismissal).

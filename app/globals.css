@@ -252,10 +252,11 @@
     filter: invert(1);
   }
 
+  /* Only the sequential row-# column is left-pinned. */
   .board-sticky-index {
     position: sticky;
     left: 0;
-    z-index: 13;
+    z-index: 12;
     background: var(--color-surface);
   }
 
@@ -263,55 +264,8 @@
     position: sticky;
     top: 0;
     left: 0;
-    z-index: 33;
-    background: var(--color-surface-2);
-  }
-
-  .board-sticky-created {
-    position: sticky;
-    left: var(--board-index-w);
-    z-index: 12;
-    background: var(--color-surface);
-  }
-
-  .board-sticky-created-head {
-    position: sticky;
-    top: 0;
-    left: var(--board-index-w);
     z-index: 32;
     background: var(--color-surface-2);
-  }
-
-  .board-sticky-customer {
-    position: sticky;
-    left: calc(var(--board-index-w) + var(--board-created-w));
-    z-index: 11;
-    background: var(--color-surface);
-  }
-
-  .board-sticky-customer-head {
-    position: sticky;
-    top: 0;
-    left: calc(var(--board-index-w) + var(--board-created-w));
-    z-index: 31;
-    background: var(--color-surface-2);
-  }
-
-  .board-sticky-job {
-    position: sticky;
-    left: calc(var(--board-index-w) + var(--board-created-w) + var(--board-customer-w));
-    z-index: 10;
-    background: var(--color-surface);
-    box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
-  }
-
-  .board-sticky-job-head {
-    position: sticky;
-    top: 0;
-    left: calc(var(--board-index-w) + var(--board-created-w) + var(--board-customer-w));
-    z-index: 30;
-    background: var(--color-surface-2);
-    box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
   }
 
   .board-sticky-head {
@@ -366,12 +320,6 @@
 
   .board-sticky-index,
   .board-sticky-index-head,
-  .board-sticky-created,
-  .board-sticky-created-head,
-  .board-sticky-customer,
-  .board-sticky-customer-head,
-  .board-sticky-job,
-  .board-sticky-job-head,
   .board-sticky-head {
     position: static !important;
     box-shadow: none !important;

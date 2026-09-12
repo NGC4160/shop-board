@@ -105,7 +105,7 @@ function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
  * HCP customer names overwrite existing board names (so stale values like
  * "Neighborhood Golf Carts" get corrected). Empty HCP names are not invented
  * and do not keep a leftover shop name. Phone / pipeline status still update
- * from HCP. Date created comes from HCP `created_at` when present and is
+ * from HCP. Date started comes from HCP `created_at` when present and is
  * never invented. Tech-entered next action and Timeframe stay only on jobs that
  * remain in the open pull. Finished/canceled HCP jobs drop off the board.
  * Local-only N-add / seed rows that were never synced from HCP stay.
