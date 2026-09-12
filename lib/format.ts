@@ -34,6 +34,22 @@ export function formatDay(ms: number): string {
   }).format(new Date(ms));
 }
 
+/**
+ * Shop-floor Housecall Pro created date in America/Chicago.
+ * Missing or invalid timestamps show an em dash — never invent a date.
+ */
+export function formatCreatedDate(ms: number | null | undefined): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "—";
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: TZ,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 export function agingLabel(days: number): string {
   if (!Number.isFinite(days) || days <= 0 || days > 365) return "today";
   if (days === 1) return "1d in stage";

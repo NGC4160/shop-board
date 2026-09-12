@@ -177,15 +177,21 @@
 
   .board-sheet {
     --board-index-w: 2.75rem;
+    --board-created-w: 7.5rem;
     --board-customer-w: 14rem;
+    --board-job-w: 8rem;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 68rem);
+    width: max(100%, 76rem);
   }
 
   .board-col-index {
     width: var(--board-index-w);
+  }
+
+  .board-col-created {
+    width: var(--board-created-w);
   }
 
   .board-col-customer {
@@ -193,7 +199,7 @@
   }
 
   .board-col-job {
-    width: 12%;
+    width: var(--board-job-w);
   }
 
   .board-col-tech {
@@ -224,6 +230,18 @@
     color: var(--color-muted);
   }
 
+  .board-created-date {
+    display: flex;
+    height: 2.75rem;
+    align-items: center;
+    padding: 0 0.5rem;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--color-muted);
+  }
+
   .board-date {
     color-scheme: dark;
   }
@@ -237,7 +255,7 @@
   .board-sticky-index {
     position: sticky;
     left: 0;
-    z-index: 12;
+    z-index: 13;
     background: var(--color-surface);
   }
 
@@ -245,13 +263,28 @@
     position: sticky;
     top: 0;
     left: 0;
+    z-index: 33;
+    background: var(--color-surface-2);
+  }
+
+  .board-sticky-created {
+    position: sticky;
+    left: var(--board-index-w);
+    z-index: 12;
+    background: var(--color-surface);
+  }
+
+  .board-sticky-created-head {
+    position: sticky;
+    top: 0;
+    left: var(--board-index-w);
     z-index: 32;
     background: var(--color-surface-2);
   }
 
   .board-sticky-customer {
     position: sticky;
-    left: var(--board-index-w);
+    left: calc(var(--board-index-w) + var(--board-created-w));
     z-index: 11;
     background: var(--color-surface);
   }
@@ -259,14 +292,14 @@
   .board-sticky-customer-head {
     position: sticky;
     top: 0;
-    left: var(--board-index-w);
+    left: calc(var(--board-index-w) + var(--board-created-w));
     z-index: 31;
     background: var(--color-surface-2);
   }
 
   .board-sticky-job {
     position: sticky;
-    left: calc(var(--board-index-w) + var(--board-customer-w));
+    left: calc(var(--board-index-w) + var(--board-created-w) + var(--board-customer-w));
     z-index: 10;
     background: var(--color-surface);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
@@ -275,7 +308,7 @@
   .board-sticky-job-head {
     position: sticky;
     top: 0;
-    left: calc(var(--board-index-w) + var(--board-customer-w));
+    left: calc(var(--board-index-w) + var(--board-created-w) + var(--board-customer-w));
     z-index: 30;
     background: var(--color-surface-2);
     box-shadow: 6px 0 10px -8px rgba(0, 0, 0, 0.8);
@@ -286,6 +319,20 @@
     top: 0;
     z-index: 20;
     background: var(--color-surface-2);
+  }
+
+  @media (max-width: 767px) {
+    .board-sheet {
+      --board-index-w: 2.25rem;
+      --board-created-w: 5.75rem;
+      --board-customer-w: 9rem;
+      --board-job-w: 5.75rem;
+    }
+
+    .board-created-date {
+      padding-inline: 0.25rem;
+      font-size: 0.75rem;
+    }
   }
 
   @media (min-width: 1280px) {
@@ -307,6 +354,7 @@
 
   .board-sheet,
   .board-col-index,
+  .board-col-created,
   .board-col-job,
   .board-col-customer,
   .board-col-tech,
@@ -318,6 +366,8 @@
 
   .board-sticky-index,
   .board-sticky-index-head,
+  .board-sticky-created,
+  .board-sticky-created-head,
   .board-sticky-customer,
   .board-sticky-customer-head,
   .board-sticky-job,
