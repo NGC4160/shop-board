@@ -5,6 +5,7 @@ import {
   emptyDraft,
   draftToJob,
   isGhostJob,
+  isUnscheduledStatus,
   normalizeJobNumber,
   saneStatusChangedAt,
   type CartJob,
@@ -71,20 +72,21 @@ export function nextCustomerNameFromHcp(incoming: string, existing: string): str
 }
 
 /**
- * Incoming HCP `schedule.scheduled_start` wins when present.
- * Missing incoming never invents a date. A previously stored start is kept
- * unless HCP clearly cleared the schedule (`schedule` key present and
- * `scheduled_start` empty/null) — for example an unscheduled job.
+ * Incoming HCP `schedule.scheduled_start` wins when present, except Unscheduled
+ * / needs scheduling: those always clear, even if a leftover start is still
+ * on the payload. Missing incoming never invents a date. A previously stored
+ * start is kept only when the job is still scheduled and HCP omitted `schedule`.
+ * `schedule` present with an empty `scheduled_start` also clears.
  */
 export function nextHcpScheduledStartAt(
   incoming: number | null | undefined,
   existing: number | null | undefined,
   scheduleCleared = false,
 ): number | null {
+  if (scheduleCleared) return null;
   if (typeof incoming === "number" && Number.isFinite(incoming) && incoming > 0) {
     return incoming;
   }
-  if (scheduleCleared) return null;
   if (typeof existing === "number" && Number.isFinite(existing) && existing > 0) {
     return existing;
   }
@@ -96,6 +98,12 @@ function scheduleStartCleared(hcp: HcpOpenJob): boolean {
     return false;
   }
   return Boolean(hcp.schedulePresent);
+}
+
+/** Clear Date started when HCP or the merged board status is Unscheduled. */
+function shouldClearScheduledStart(hcp: HcpOpenJob, boardStatus: string): boolean {
+  if (isUnscheduledStatus(hcp.status) || isUnscheduledStatus(boardStatus)) return true;
+  return scheduleStartCleared(hcp);
 }
 
 /**
@@ -143,7 +151,9 @@ function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
  * "Neighborhood Golf Carts" get corrected). Empty HCP names are not invented
  * and do not keep a leftover shop name. Phone / pipeline status still update
  * from HCP. Date started comes from HCP `schedule.scheduled_start` when present
- * and is never invented from created_at. Tech-entered next action and Timeframe stay only on jobs that
+ * and is never invented from created_at. Unscheduled / needs scheduling always
+ * stores null (even if leftover `scheduled_start` is still on the job).
+ * Tech-entered next action and Timeframe stay only on jobs that
  * remain in the open pull. Finished/canceled HCP jobs drop off the board.
  * Local-only N-add / seed rows that were never synced from HCP stay.
  */
@@ -188,7 +198,7 @@ export function mergeHcpJobs(
         hcpScheduledStartAt: nextHcpScheduledStartAt(
           hcp.scheduledStart,
           null,
-          scheduleStartCleared(hcp),
+          shouldClearScheduledStart(hcp, draft.status),
         ),
         updatedAt: now,
         statusChangedAt: now,
@@ -207,7 +217,7 @@ export function mergeHcpJobs(
     const nextStart = nextHcpScheduledStartAt(
       hcp.scheduledStart,
       existing.hcpScheduledStartAt,
-      scheduleStartCleared(hcp),
+      shouldClearScheduledStart(hcp, nextStatus),
     );
     if (!statusChanged && !customerChanged && !phoneChanged) {
       const startChanged = nextStart !== (existing.hcpScheduledStartAt ?? null);

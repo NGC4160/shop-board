@@ -1,3 +1,5 @@
+import { isUnscheduledStatus } from "@/lib/jobs";
+
 const TZ = "America/Chicago";
 
 export function formatClock(now = Date.now()): string {
@@ -48,6 +50,18 @@ export function formatStartedDate(ms: number | null | undefined): string {
     day: "numeric",
     year: "numeric",
   }).format(date);
+}
+
+/**
+ * Visible Date started. Unscheduled / needs scheduling always shows —, even if
+ * a leftover `schedule.scheduled_start` is still stored.
+ */
+export function displayStartedDate(
+  ms: number | null | undefined,
+  status?: string | null,
+): string {
+  if (isUnscheduledStatus(status)) return "—";
+  return formatStartedDate(ms);
 }
 
 export function agingLabel(days: number): string {

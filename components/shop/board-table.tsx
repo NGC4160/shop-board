@@ -14,7 +14,7 @@ import {
   statusTone,
   type CartJob,
 } from "@/lib/jobs";
-import { formatStartedDate } from "@/lib/format";
+import { displayStartedDate } from "@/lib/format";
 import { ComboCell } from "@/components/shop/combo-cell";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +81,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
       <tbody>
         {jobs.map((job, index) => {
           const rowNumber = index + 1;
+          const startedLabel = displayStartedDate(job.hcpScheduledStartAt, job.status);
           return (
             <tr
               key={job.id}
@@ -100,12 +101,12 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                 <span
                   className="board-created-date"
                   aria-label={
-                    job.hcpScheduledStartAt
-                      ? `Date started ${formatStartedDate(job.hcpScheduledStartAt)}`
-                      : "Date started unavailable"
+                    startedLabel === "—"
+                      ? "Date started unavailable"
+                      : `Date started ${startedLabel}`
                   }
                 >
-                  {formatStartedDate(job.hcpScheduledStartAt)}
+                  {startedLabel}
                 </span>
               </td>
               <td className="border-r border-b border-border px-1 py-1">
