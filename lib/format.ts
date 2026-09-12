@@ -35,10 +35,10 @@ export function formatDay(ms: number): string {
 }
 
 /**
- * Shop-floor Date started (Housecall Pro `created_at`) in America/Chicago.
- * Missing or invalid timestamps show an em dash — never invent a date.
+ * Shop-floor Date started (Housecall Pro `schedule.scheduled_start`) in America/Chicago.
+ * Date-only. Missing or invalid timestamps show an em dash — never invent a date.
  */
-export function formatCreatedDate(ms: number | null | undefined): string {
+export function formatStartedDate(ms: number | null | undefined): string {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "—";
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return "—";

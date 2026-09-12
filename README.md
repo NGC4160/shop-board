@@ -13,7 +13,7 @@ This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 One dense table on one page. Rows are jobs. Columns are these fields, in this order, always sorted by job number ascending:
 
 1. **#** (sequential board row 1–n)
-2. **Date started** (Housecall Pro job `created_at`, America/Chicago; dash when missing — never invented)
+2. **Date started** (Housecall Pro `schedule.scheduled_start`, America/Chicago; dash when missing — never invented)
 3. **Customer name**
 4. **Job number**
 5. **Primary tech**
@@ -50,9 +50,9 @@ Live NGC invoices are currently **6-digit** (for example `173128`). The 4-digit 
 
 ## Date started
 
-**Date started** is Housecall Pro’s job `created_at` (ISO 8601 on the Jobs API). Sync maps that field through `/api/jobs/hcp` and stores it as `hcpCreatedAt`. The board shows it as a shop-floor date in **America/Chicago** (for example `Sep 12, 2026`).
+**Date started** is Housecall Pro’s job **`schedule.scheduled_start`** (ISO 8601 date-time on the Jobs API). That is the appointment/schedule start on the official Job object — not `created_at`. Sync maps that field through `/api/jobs/hcp` and stores it as `hcpScheduledStartAt`. The board shows it as a shop-floor **date only** in **America/Chicago** (for example `Mar 18, 2026`).
 
-If a job has no `created_at`, the cell is **—**. Sync time and the local board `createdAt` (when the row was added here) are never used as a stand-in. A later sync that omits `created_at` keeps a date that was already stored.
+If a job has no schedule start (unscheduled, or `schedule.scheduled_start` missing), the cell is **—**. Sync time, board `createdAt`, HCP `created_at`, `updated_at`, and `work_timestamps.started_at` are never used as a stand-in. A later sync that **omits** the `schedule` object keeps a date that was already stored. A later sync that **includes** `schedule` with an empty `scheduled_start` clears the stored date (HCP unscheduled / cleared the appointment).
 
 ## Primary tech
 
@@ -104,7 +104,7 @@ Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handl
 Each shop tablet/TV then merges that job list into the local board:
 
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
-- Housecall Pro updates **job list, customer name, phone**, **Date started** from job `created_at` when the payload includes it, and **pipeline status when the API gives an exact Jobs pipeline name**. Missing `created_at` is stored as empty (shown as —) and is never invented from sync time. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
+- Housecall Pro updates **job list, customer name, phone**, **Date started** from `schedule.scheduled_start` when the payload includes it, and **pipeline status when the API gives an exact Jobs pipeline name**. Missing schedule start is stored as empty (shown as —) and is never invented from `created_at` or sync time. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented. A leftover shop-as-customer name is cleared instead of kept.
 - If the board still has any customer name that is `Neighborhood Golf Carts` or a close variant (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
 - Jobs that came from Housecall Pro (or still show the shop as the customer) and are **not** in the open HCP pull drop off the board — finished / canceled / paid-complete work leaves with the sync. Next step and Timeframe are kept only on jobs that remain open. Local-only `N` adds that were never synced from HCP stay.

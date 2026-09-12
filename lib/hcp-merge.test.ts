@@ -5,7 +5,7 @@ import {
   isHcpTrackedJob,
   mergeHcpJobs,
   nextCustomerNameFromHcp,
-  nextHcpCreatedAt,
+  nextHcpScheduledStartAt,
   shouldFetchHcpJobs,
   shouldRunHcpClientFetch,
   STALE_HCP_COMPANY_CUSTOMER,
@@ -28,10 +28,24 @@ describe("mapHcpJob", () => {
     assert.equal(mapped?.status, "In Progress");
     assert.equal(mapped?.statusIsPipeline, false);
     assert.equal(mapped?.primaryTech, "Hayden Silva");
-    assert.equal(mapped?.createdAt, null);
+    assert.equal(mapped?.scheduledStart, null);
+    assert.equal(mapped?.schedulePresent, false);
   });
 
-  it("maps created_at when HCP sends a real timestamp", () => {
+  it("maps schedule.scheduled_start when HCP sends a real timestamp", () => {
+    const mapped = mapHcpJob({
+      id: "abc",
+      invoice_number: "1842",
+      work_status: "in progress",
+      created_at: "2026-01-01T00:00:00Z",
+      schedule: { scheduled_start: "2026-04-02T14:15:22Z" },
+      customer: { first_name: "Mike", last_name: "Landry" },
+    });
+    assert.equal(mapped?.scheduledStart, Date.parse("2026-04-02T14:15:22Z"));
+    assert.equal(mapped?.schedulePresent, true);
+  });
+
+  it("does not use created_at as Date started", () => {
     const mapped = mapHcpJob({
       id: "abc",
       invoice_number: "1842",
@@ -39,7 +53,7 @@ describe("mapHcpJob", () => {
       created_at: "2026-04-02T14:15:22Z",
       customer: { first_name: "Mike", last_name: "Landry" },
     });
-    assert.equal(mapped?.createdAt, Date.parse("2026-04-02T14:15:22Z"));
+    assert.equal(mapped?.scheduledStart, null);
   });
 
   it("prefers an exact Jobs pipeline tag over coarse work_status", () => {
@@ -142,11 +156,11 @@ describe("mergeHcpJobs", () => {
     assert.equal(added, 1);
     assert.equal(jobs.some((job) => job.jobNumber === "1842"), true);
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
-    assert.equal(jobs.find((job) => job.jobNumber === "1901")?.hcpCreatedAt, null);
+    assert.equal(jobs.find((job) => job.jobNumber === "1901")?.hcpScheduledStartAt, null);
   });
 
-  it("stores HCP created_at on new jobs and keeps it across later syncs", () => {
-    const created = Date.parse("2026-02-10T16:00:00Z");
+  it("stores HCP schedule.scheduled_start on new jobs and keeps it when later payloads omit schedule", () => {
+    const started = Date.parse("2026-02-10T16:00:00Z");
     const first = mergeHcpJobs([], [
       {
         hcpId: "new",
@@ -156,10 +170,11 @@ describe("mergeHcpJobs", () => {
         status: "New Job",
         statusIsPipeline: true,
         primaryTech: "",
-        createdAt: created,
+        scheduledStart: started,
+        schedulePresent: true,
       },
     ]);
-    assert.equal(first.jobs[0].hcpCreatedAt, created);
+    assert.equal(first.jobs[0].hcpScheduledStartAt, started);
     const second = mergeHcpJobs(first.jobs, [
       {
         hcpId: "new",
@@ -169,15 +184,47 @@ describe("mergeHcpJobs", () => {
         status: "New Job",
         statusIsPipeline: true,
         primaryTech: "",
-        createdAt: null,
+        scheduledStart: null,
+        schedulePresent: false,
       },
     ]);
-    assert.equal(second.jobs[0].hcpCreatedAt, created);
+    assert.equal(second.jobs[0].hcpScheduledStartAt, started);
   });
 
-  it("does not invent a created date from board createdAt or sync time", () => {
+  it("clears a stored Date started when HCP includes schedule with an empty start", () => {
+    const started = Date.parse("2026-02-10T16:00:00Z");
+    const first = mergeHcpJobs([], [
+      {
+        hcpId: "new",
+        jobNumber: "1901",
+        customerName: "New Customer",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+        scheduledStart: started,
+        schedulePresent: true,
+      },
+    ]);
+    const second = mergeHcpJobs(first.jobs, [
+      {
+        hcpId: "new",
+        jobNumber: "1901",
+        customerName: "New Customer",
+        phone: "",
+        status: "Unscheduled",
+        statusIsPipeline: true,
+        primaryTech: "",
+        scheduledStart: null,
+        schedulePresent: true,
+      },
+    ]);
+    assert.equal(second.jobs[0].hcpScheduledStartAt, null);
+  });
+
+  it("does not invent a Date started from created_at, board createdAt, or sync time", () => {
     const local = seedJobs.filter((job) => job.jobNumber === "1842");
-    assert.equal(local[0].hcpCreatedAt, null);
+    assert.equal(local[0].hcpScheduledStartAt, null);
     const { jobs } = mergeHcpJobs(local, [
       {
         hcpId: "hcp-1842",
@@ -189,12 +236,13 @@ describe("mergeHcpJobs", () => {
         primaryTech: "",
       },
     ]);
-    assert.equal(jobs[0].hcpCreatedAt, null);
-    assert.notEqual(jobs[0].hcpCreatedAt, jobs[0].createdAt);
-    const upgraded = upgradeJob({ ...local[0], hcpCreatedAt: undefined });
-    assert.equal(upgraded?.hcpCreatedAt, null);
-    assert.equal(nextHcpCreatedAt(null, null), null);
-    assert.equal(nextHcpCreatedAt(undefined, 1_700_000_000_000), 1_700_000_000_000);
+    assert.equal(jobs[0].hcpScheduledStartAt, null);
+    assert.notEqual(jobs[0].hcpScheduledStartAt, jobs[0].createdAt);
+    const upgraded = upgradeJob({ ...local[0], hcpCreatedAt: 1_700_000_000_000, hcpScheduledStartAt: undefined });
+    assert.equal(upgraded?.hcpScheduledStartAt, null);
+    assert.equal(nextHcpScheduledStartAt(null, null), null);
+    assert.equal(nextHcpScheduledStartAt(undefined, 1_700_000_000_000), 1_700_000_000_000);
+    assert.equal(nextHcpScheduledStartAt(null, 1_700_000_000_000, true), null);
   });
 
   it("treats the shop company string and close variants as stale", () => {
