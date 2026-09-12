@@ -71,6 +71,7 @@ export function ShopApp() {
     let errorToasted = false;
     return startHcpMorningSync((result: ClientHcpSyncResult) => {
       if (result.skipped) return;
+      setLastSyncResult(result);
       if (!result.ok && errorToasted) return;
       if (!result.ok) errorToasted = true;
       reportSync(result, false);

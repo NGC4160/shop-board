@@ -54,6 +54,8 @@ Live NGC invoices are currently **6-digit** (for example `173128`). The 4-digit 
 
 If a job has no schedule start (unscheduled, or `schedule.scheduled_start` missing), the cell is **—**. Sync time, board `createdAt`, HCP `created_at`, `updated_at`, and `work_timestamps.started_at` are never used as a stand-in. A later sync that **omits** the `schedule` object keeps a date that was already stored. A later sync that **includes** `schedule` with an empty `scheduled_start` clears the stored date (HCP unscheduled / cleared the appointment).
 
+Live `GET /jobs?page=&page_size=` includes `schedule` on each Job — no `expand` is required. After the `hcpCreatedAt` → `hcpScheduledStartAt` rename, a hard refresh that does not Sync still has today’s `lastHcpSyncAt` and null starts. The next load one-shot re-pulls when any Housecall Pro **Scheduled** or **In Progress** row is missing a stored start (same one-shot pattern as leftover shop-as-customer names). **Sync** / pull-to-refresh always rewrites Date started from `schedule.scheduled_start`. Local-only seed rows (`1839`, `1842`, …) may stay **—**.
+
 ## Primary tech
 
 Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team & Permissions). Office Staff and other roles are not included.
@@ -106,7 +108,7 @@ Each shop tablet/TV then merges that job list into the local board:
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
 - Housecall Pro updates **job list, customer name, phone**, **Date started** from `schedule.scheduled_start` when the payload includes it, and **pipeline status when the API gives an exact Jobs pipeline name**. Missing schedule start is stored as empty (shown as —) and is never invented from `created_at` or sync time. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented. A leftover shop-as-customer name is cleared instead of kept.
-- If the board still has any customer name that is `Neighborhood Golf Carts` or a close variant (the old shop-as-company bug), the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names do not refetch every minute.
+- If the board still has any customer name that is `Neighborhood Golf Carts` or a close variant (the old shop-as-company bug), **or** any Housecall Pro **Scheduled** / **In Progress** row with no stored Date started, the next load fetches `/api/jobs/hcp` and re-applies even when `lastHcpSyncAt` is already today. That one merge overwrites those localStorage rows. After it runs, leftover real company names or truly unscheduled rows do not refetch every minute.
 - Jobs that came from Housecall Pro (or still show the shop as the customer) and are **not** in the open HCP pull drop off the board — finished / canceled / paid-complete work leaves with the sync. Next step and Timeframe are kept only on jobs that remain open. Local-only `N` adds that were never synced from HCP stay.
 - **Sync** (or pull-to-refresh) on the spreadsheet forces the same `/api/jobs/hcp` merge even if the board already synced after 7:00 AM today. Morning sync still runs on its own schedule.
 

@@ -95,6 +95,10 @@ export function hcpBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
  * Official Jobs OpenAPI documents those plus schedule / customer / employee
  * filters. sort_by and repeated work_status= values are what HCP 400s on
  * (Zapier: "work_status filter must be an array"); we filter open jobs after.
+ *
+ * Live GET /jobs includes Job.schedule (scheduled_start / scheduled_end /
+ * arrival_window) without expand. expand[] is only for appointments /
+ * attachments — do not add it here.
  */
 export function buildHcpJobsListUrl(
   baseUrl: string,

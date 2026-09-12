@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  hasMissingHcpScheduledStarts,
   hasStaleHcpCompanyCustomerName,
   isHcpTrackedJob,
   mergeHcpJobs,
@@ -191,6 +192,37 @@ describe("mergeHcpJobs", () => {
     assert.equal(second.jobs[0].hcpScheduledStartAt, started);
   });
 
+  it("fills a null stored Date started from incoming schedule.scheduled_start", () => {
+    const started = Date.parse("2025-02-06T21:55:00.000Z");
+    const local = [
+      {
+        ...seedJobs[0],
+        id: "hcp-job_645",
+        jobNumber: "645",
+        customerName: "Alexis Hocevar",
+        phone: "5044163775",
+        status: "Scheduled",
+        hcpScheduledStartAt: null,
+        history: [{ at: 1, kind: "created" as const, text: "Added from Housecall Pro" }],
+      },
+    ];
+    const { jobs, updated } = mergeHcpJobs(local, [
+      {
+        hcpId: "job_645",
+        jobNumber: "645",
+        customerName: "Alexis Hocevar",
+        phone: "5044163775",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "Marlon Gray",
+        scheduledStart: started,
+        schedulePresent: true,
+      },
+    ]);
+    assert.equal(jobs[0].hcpScheduledStartAt, started);
+    assert.equal(updated, 1);
+  });
+
   it("clears a stored Date started when HCP includes schedule with an empty start", () => {
     const started = Date.parse("2026-02-10T16:00:00Z");
     const first = mergeHcpJobs([], [
@@ -253,6 +285,39 @@ describe("mergeHcpJobs", () => {
     assert.equal(hasStaleHcpCompanyCustomerName([]), false);
   });
 
+  it("detects HCP Scheduled / In Progress rows missing a stored schedule start", () => {
+    const staleScheduled = {
+      id: "hcp-job_645",
+      customerName: "Alexis Hocevar",
+      status: "Scheduled",
+      hcpScheduledStartAt: null,
+      history: [{ text: "Added from Housecall Pro" }],
+    };
+    const staleInProgress = {
+      id: "hcp-job_562",
+      customerName: "Tommy Brunett",
+      status: "In Progress",
+      hcpScheduledStartAt: null,
+      history: [{ text: "Added from Housecall Pro" }],
+    };
+    const filled = { ...staleScheduled, hcpScheduledStartAt: 1_738_883_700_000 };
+    const unscheduled = {
+      id: "hcp-job_1",
+      customerName: "Diane Rodrigue",
+      status: "Unscheduled",
+      hcpScheduledStartAt: null,
+      history: [{ text: "Added from Housecall Pro" }],
+    };
+    const localSeed = seedJobs.find((job) => job.jobNumber === "1849");
+    assert.ok(localSeed);
+    assert.equal(hasMissingHcpScheduledStarts([staleScheduled]), true);
+    assert.equal(hasMissingHcpScheduledStarts([staleInProgress]), true);
+    assert.equal(hasMissingHcpScheduledStarts([filled]), false);
+    assert.equal(hasMissingHcpScheduledStarts([unscheduled]), false);
+    assert.equal(hasMissingHcpScheduledStarts([localSeed]), false);
+    assert.equal(hasMissingHcpScheduledStarts(seedJobs), false);
+  });
+
   it("fetches when already synced today if a stale shop company name is still on the board", () => {
     const seven = Date.parse("2026-09-09T12:00:00.000Z");
     const noon = Date.parse("2026-09-09T17:00:00.000Z");
@@ -261,6 +326,54 @@ describe("mergeHcpJobs", () => {
       true,
     );
     assert.equal(shouldFetchHcpJobs(seven, [{ customerName: "Mike Landry" }], noon), false);
+    assert.equal(
+      shouldFetchHcpJobs(
+        seven,
+        [
+          {
+            id: "hcp-job_645",
+            customerName: "Alexis Hocevar",
+            status: "Scheduled",
+            hcpScheduledStartAt: null,
+            history: [{ text: "Added from Housecall Pro" }],
+          },
+        ],
+        noon,
+      ),
+      true,
+    );
+    assert.equal(
+      shouldFetchHcpJobs(
+        seven,
+        [
+          {
+            id: "hcp-job_645",
+            customerName: "Alexis Hocevar",
+            status: "Scheduled",
+            hcpScheduledStartAt: null,
+            history: [{ text: "Added from Housecall Pro" }],
+          },
+        ],
+        noon,
+        true,
+      ),
+      false,
+    );
+    assert.equal(
+      shouldFetchHcpJobs(
+        seven,
+        [
+          {
+            id: "seed-1849",
+            customerName: "Fairway Estates",
+            status: "Scheduled",
+            hcpScheduledStartAt: null,
+          },
+        ],
+        noon,
+      ),
+      false,
+    );
     assert.equal(
       shouldFetchHcpJobs(seven, [{ customerName: STALE_HCP_COMPANY_CUSTOMER }], noon, true),
       false,
