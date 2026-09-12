@@ -176,6 +176,8 @@ export type CartJob = {
   createdAt: number;
   updatedAt: number;
   statusChangedAt: number;
+  /** Housecall Pro job `created_at`. Null when unknown — never invented. */
+  hcpCreatedAt: number | null;
 };
 
 export type CartJobDraft = {
@@ -213,7 +215,10 @@ const SEED_PLUS_3 = chicagoDayOffset(3);
 const SEED_PLUS_5 = chicagoDayOffset(5);
 
 function seed(
-  partial: Omit<CartJob, "history" | "createdAt" | "updatedAt" | "statusChangedAt"> & {
+  partial: Omit<
+    CartJob,
+    "history" | "createdAt" | "updatedAt" | "statusChangedAt" | "hcpCreatedAt"
+  > & {
     daysAgo: number;
     statusDays: number;
     history: string[];
@@ -240,6 +245,7 @@ function seed(
     createdAt,
     updatedAt: statusChangedAt,
     statusChangedAt,
+    hcpCreatedAt: null,
     history: [
       { at: createdAt, kind: "created", text: "Added to the board" },
       ...partial.history.map((text, index) => ({
@@ -682,6 +688,7 @@ export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     statusChangedAt: statusChanged,
+    hcpCreatedAt: existing?.hcpCreatedAt ?? null,
   };
 }
 
@@ -962,7 +969,15 @@ export function upgradeJob(value: unknown): CartJob | null {
       },
       now,
     ),
+    hcpCreatedAt: parseStoredHcpCreatedAt(job.hcpCreatedAt),
   };
+}
+
+/** Persist a stored HCP created timestamp. Do not fall back to board `createdAt`. */
+function parseStoredHcpCreatedAt(raw: unknown): number | null {
+  const ms = coerceMillis(raw);
+  if (ms == null) return null;
+  return ms;
 }
 
 export function sanitizeLoadedJobs(values: unknown[]): CartJob[] {

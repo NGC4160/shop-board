@@ -9,6 +9,7 @@ import {
   hcpErrorDetail,
   isOpenHcpWorkStatus,
   jobNumberFromHcp,
+  createdAtFromHcp,
   mapHcpJob,
 } from "./hcp.ts";
 
@@ -156,6 +157,19 @@ describe("jobNumberFromHcp", () => {
     assert.equal(jobNumberFromHcp({ invoice_number: 173128 }), "173128");
     assert.equal(jobNumberFromHcp({ job_number: "1842" }), "1842");
     assert.equal(jobNumberFromHcp({}), "");
+  });
+});
+
+describe("createdAtFromHcp", () => {
+  it("reads ISO created_at and does not invent missing dates", () => {
+    const iso = "2026-03-18T15:30:00Z";
+    assert.equal(createdAtFromHcp({ created_at: iso }), Date.parse(iso));
+    assert.equal(createdAtFromHcp({ createdAt: iso }), Date.parse(iso));
+    assert.equal(createdAtFromHcp({ created_at: "  " }), null);
+    assert.equal(createdAtFromHcp({ created_at: "not-a-date" }), null);
+    assert.equal(createdAtFromHcp({}), null);
+    assert.equal(createdAtFromHcp(null), null);
+    assert.equal(createdAtFromHcp({ updated_at: iso, work_timestamps: { started_at: iso } }), null);
   });
 });
 

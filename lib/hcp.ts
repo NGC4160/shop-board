@@ -1,5 +1,6 @@
 import {
   PRIMARY_TECHS,
+  coerceMillis,
   isPipelineStatus,
   normalizeJobNumber,
 } from "@/lib/jobs";
@@ -17,6 +18,8 @@ export type HcpOpenJob = {
   statusIsPipeline: boolean;
   /** Field tech name when it matches the shop dropdown; else empty. */
   primaryTech: string;
+  /** Housecall Pro job `created_at` millis. Null/omitted when missing — never invented. */
+  createdAt?: number | null;
 };
 
 export type HcpSyncResult =
@@ -257,6 +260,31 @@ export function jobNumberFromHcp(job: unknown): string {
   return normalizeJobNumber(asString(record.invoice_number) || asString(record.job_number));
 }
 
+/**
+ * Housecall Pro job created timestamp from `created_at` (ISO 8601) or `createdAt`.
+ * Never invents a date — missing, blank, or unparseable values are null.
+ * Does not fall back to updated_at, schedule, or work_timestamps.
+ */
+export function createdAtFromHcp(job: unknown): number | null {
+  const record = asRecord(job);
+  if (!record) return null;
+  for (const key of ["created_at", "createdAt"] as const) {
+    const parsed = parseHcpCreatedAt(record[key]);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+function parseHcpCreatedAt(value: unknown): number | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const iso = Date.parse(trimmed);
+    if (Number.isFinite(iso) && iso > 0) return iso;
+  }
+  return coerceMillis(value);
+}
+
 export function phoneFromHcp(customer: unknown): string {
   const record = asRecord(customer);
   if (!record) return "";
@@ -316,6 +344,7 @@ export function mapHcpJob(raw: unknown): HcpOpenJob | null {
     status: pipeline ?? mapped,
     statusIsPipeline: Boolean(pipeline),
     primaryTech: techFromHcp(job),
+    createdAt: createdAtFromHcp(job),
   };
 }
 

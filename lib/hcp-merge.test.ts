@@ -5,12 +5,13 @@ import {
   isHcpTrackedJob,
   mergeHcpJobs,
   nextCustomerNameFromHcp,
+  nextHcpCreatedAt,
   shouldFetchHcpJobs,
   shouldRunHcpClientFetch,
   STALE_HCP_COMPANY_CUSTOMER,
 } from "./hcp-merge.ts";
 import { mapHcpJob } from "./hcp.ts";
-import { seedJobs } from "./jobs.ts";
+import { seedJobs, upgradeJob } from "./jobs.ts";
 
 describe("mapHcpJob", () => {
   it("maps invoice number, customer, and open work status", () => {
@@ -27,6 +28,18 @@ describe("mapHcpJob", () => {
     assert.equal(mapped?.status, "In Progress");
     assert.equal(mapped?.statusIsPipeline, false);
     assert.equal(mapped?.primaryTech, "Hayden Silva");
+    assert.equal(mapped?.createdAt, null);
+  });
+
+  it("maps created_at when HCP sends a real timestamp", () => {
+    const mapped = mapHcpJob({
+      id: "abc",
+      invoice_number: "1842",
+      work_status: "in progress",
+      created_at: "2026-04-02T14:15:22Z",
+      customer: { first_name: "Mike", last_name: "Landry" },
+    });
+    assert.equal(mapped?.createdAt, Date.parse("2026-04-02T14:15:22Z"));
   });
 
   it("prefers an exact Jobs pipeline tag over coarse work_status", () => {
@@ -129,6 +142,59 @@ describe("mergeHcpJobs", () => {
     assert.equal(added, 1);
     assert.equal(jobs.some((job) => job.jobNumber === "1842"), true);
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
+    assert.equal(jobs.find((job) => job.jobNumber === "1901")?.hcpCreatedAt, null);
+  });
+
+  it("stores HCP created_at on new jobs and keeps it across later syncs", () => {
+    const created = Date.parse("2026-02-10T16:00:00Z");
+    const first = mergeHcpJobs([], [
+      {
+        hcpId: "new",
+        jobNumber: "1901",
+        customerName: "New Customer",
+        phone: "",
+        status: "New Job",
+        statusIsPipeline: true,
+        primaryTech: "",
+        createdAt: created,
+      },
+    ]);
+    assert.equal(first.jobs[0].hcpCreatedAt, created);
+    const second = mergeHcpJobs(first.jobs, [
+      {
+        hcpId: "new",
+        jobNumber: "1901",
+        customerName: "New Customer",
+        phone: "",
+        status: "New Job",
+        statusIsPipeline: true,
+        primaryTech: "",
+        createdAt: null,
+      },
+    ]);
+    assert.equal(second.jobs[0].hcpCreatedAt, created);
+  });
+
+  it("does not invent a created date from board createdAt or sync time", () => {
+    const local = seedJobs.filter((job) => job.jobNumber === "1842");
+    assert.equal(local[0].hcpCreatedAt, null);
+    const { jobs } = mergeHcpJobs(local, [
+      {
+        hcpId: "hcp-1842",
+        jobNumber: "1842",
+        customerName: "Mike Landry",
+        phone: "",
+        status: "In Progress",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    assert.equal(jobs[0].hcpCreatedAt, null);
+    assert.notEqual(jobs[0].hcpCreatedAt, jobs[0].createdAt);
+    const upgraded = upgradeJob({ ...local[0], hcpCreatedAt: undefined });
+    assert.equal(upgraded?.hcpCreatedAt, null);
+    assert.equal(nextHcpCreatedAt(null, null), null);
+    assert.equal(nextHcpCreatedAt(undefined, 1_700_000_000_000), 1_700_000_000_000);
   });
 
   it("treats the shop company string and close variants as stale", () => {

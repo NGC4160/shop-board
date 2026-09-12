@@ -14,6 +14,7 @@ import {
   statusTone,
   type CartJob,
 } from "@/lib/jobs";
+import { formatCreatedDate } from "@/lib/format";
 import { ComboCell } from "@/components/shop/combo-cell";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
     <table className="board-sheet text-left">
       <colgroup>
         <col className="board-col-index" />
+        <col className="board-col-created" />
         <col className="board-col-customer" />
         <col className="board-col-job" />
         <col className="board-col-tech" />
@@ -52,6 +54,9 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
             <span className="inline-flex h-9 w-full items-center justify-center text-xs font-semibold tracking-wide text-muted">
               #
             </span>
+          </th>
+          <th className="board-sticky-created-head border-b border-r border-border px-1 py-1">
+            <ColumnLabel>Date created</ColumnLabel>
           </th>
           <th className="board-sticky-customer-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Customer name</ColumnLabel>
@@ -89,6 +94,18 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
                   aria-label={`Board row ${rowNumber}`}
                 >
                   {rowNumber}
+                </span>
+              </td>
+              <td className="board-sticky-created border-r border-b border-border px-1 py-1">
+                <span
+                  className="board-created-date"
+                  aria-label={
+                    job.hcpCreatedAt
+                      ? `Date created ${formatCreatedDate(job.hcpCreatedAt)}`
+                      : "Date created unavailable"
+                  }
+                >
+                  {formatCreatedDate(job.hcpCreatedAt)}
                 </span>
               </td>
               <td className="board-sticky-customer border-r border-b border-border px-1 py-1">
