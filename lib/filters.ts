@@ -1,12 +1,14 @@
 import {
   cartLabel,
   isClosedStatus,
+  isIsoDate,
   isPartsStatus,
   isPickupStatus,
   isStale,
+  isUnscheduledStatus,
   type CartJob,
 } from "@/lib/jobs";
-import { isDueToday } from "@/lib/sort";
+import { chicagoDayKey, isDueToday } from "@/lib/sort";
 
 export const CHIP_FILTERS = [
   "all",
@@ -110,6 +112,40 @@ export type BoardStats = {
   stale: number;
   total: number;
 };
+
+/**
+ * Visible Date started as a Chicago `YYYY-MM-DD`.
+ * Null when missing, invalid, or Unscheduled — never invented.
+ */
+export function startedDateKey(job: Pick<CartJob, "hcpScheduledStartAt" | "status">): string | null {
+  if (isUnscheduledStatus(job.status)) return null;
+  const ms = job.hcpScheduledStartAt;
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return null;
+  return chicagoDayKey(ms);
+}
+
+/**
+ * Board-level Timeframe filter: empty shows every row.
+ * A chosen date keeps only jobs whose Date started is that Chicago day.
+ * Jobs without a start date are excluded while the filter is on.
+ */
+export function jobMatchesTimeframeFilter(
+  job: Pick<CartJob, "hcpScheduledStartAt" | "status">,
+  isoDate: string,
+): boolean {
+  const chosen = isoDate.trim();
+  if (!chosen) return true;
+  if (!isIsoDate(chosen)) return true;
+  const started = startedDateKey(job);
+  return started === chosen;
+}
+
+export function filterJobsByTimeframe<T extends Pick<CartJob, "hcpScheduledStartAt" | "status">>(
+  jobs: readonly T[],
+  isoDate: string,
+): T[] {
+  return jobs.filter((job) => jobMatchesTimeframeFilter(job, isoDate));
+}
 
 export function boardStats(jobs: CartJob[], now = Date.now()): BoardStats {
   const openJobs = jobs.filter((job) => !isClosedStatus(job.status));

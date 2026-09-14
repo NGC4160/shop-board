@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { toast, Toaster } from "sonner";
 import {
   customerNameError,
+  formatTimeframe,
   hasDuplicateJobNumber,
   isBlankIdentity,
   jobNumberError,
@@ -20,6 +21,7 @@ import {
   undoDelete,
   updateJob,
 } from "@/lib/board-store";
+import { filterJobsByTimeframe } from "@/lib/filters";
 import { sortJobsByJobNumber } from "@/lib/sort";
 import {
   refreshHcpJobs,
@@ -29,6 +31,7 @@ import {
 import { formatHcpSyncFeedback } from "@/lib/hcp-sync-status";
 import { BoardTable, DraftComposer } from "@/components/shop/board-table";
 import { HcpSyncButton } from "@/components/shop/hcp-sync-button";
+import { TimeframeFilter } from "@/components/shop/timeframe-filter";
 import { RemoveConfirm } from "@/components/shop/remove-confirm";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
 import { useMobileViewportRestore } from "@/components/shop/use-mobile-viewport";
@@ -43,6 +46,7 @@ export function ShopApp() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [timeframe, setTimeframe] = useState("");
   const [lastSyncResult, setLastSyncResult] = useState<ClientHcpSyncResult | null>(null);
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
@@ -158,7 +162,11 @@ export function ShopApp() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [draft, abandonBlankDraft]);
 
-  const visible = useMemo(() => sortJobsByJobNumber(board.jobs), [board.jobs]);
+  const visible = useMemo(
+    () => sortJobsByJobNumber(filterJobsByTimeframe(board.jobs, timeframe)),
+    [board.jobs, timeframe],
+  );
+  const timeframeLabel = formatTimeframe(timeframe);
 
   const onChange = (id: string, patch: Partial<CartJob>) => {
     if (draft && id === draft.id) {
@@ -225,6 +233,7 @@ export function ShopApp() {
         data-testid="hcp-refresh"
         style={{ height: Math.max(40, refreshing ? 44 : pull) }}
       >
+        <TimeframeFilter value={timeframe} onChange={setTimeframe} />
         <p className="min-w-0 flex-1 truncate" role="status" aria-live="polite">
           {syncStatus}
         </p>
@@ -239,12 +248,33 @@ export function ShopApp() {
 
         {visible.length === 0 ? (
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
-            <p className="font-display text-2xl font-semibold">No carts on the board</p>
-            <p className="mt-2 text-sm text-muted">
-              New carts come from Housecall Pro morning sync. Tap Sync (or pull down) to
-              refresh, or press{" "}
-              <kbd className="rounded-sm border border-border px-1">N</kbd> to add one locally.
-            </p>
+            {timeframe ? (
+              <>
+                <p className="font-display text-2xl font-semibold">
+                  No jobs started {timeframeLabel ? `on ${timeframeLabel}` : "on that date"}
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  Only jobs with a Date started on that day are shown. Rows with — stay hidden
+                  until you clear Timeframe.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTimeframe("")}
+                  className="mt-4 inline-flex h-11 items-center rounded-sm border border-border bg-surface-2 px-3 text-sm font-semibold"
+                >
+                  Clear timeframe
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="font-display text-2xl font-semibold">No carts on the board</p>
+                <p className="mt-2 text-sm text-muted">
+                  New carts come from Housecall Pro morning sync. Tap Sync (or pull down) to
+                  refresh, or press{" "}
+                  <kbd className="rounded-sm border border-border px-1">N</kbd> to add one locally.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <BoardTable
