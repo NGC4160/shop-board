@@ -21,10 +21,11 @@ One dense table on one page. Rows are jobs. Columns are these fields, in this or
 7. **Next step** (free text — the existing local `nextAction` field; empty is allowed)
 8. **Timeframe** (calendar date picker — a real `YYYY-MM-DD` date, empty/clearable)
 
-Every floor field edits **inline**. There is no top chrome (no Add cart button, toolbar, stats cards, search, or filters), no cart / bay / notes / phone columns, and no details drawer. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
+Every floor field edits **inline**. There is no fat top chrome (no Add cart button, toolbar, stats cards, search, or chip filters), no cart / bay / notes / phone columns, and no details drawer. The thin top bar has **Timeframe** (board-level date filter) and **Sync**. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
 
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
 - **Keyboard:** `N` add cart locally, `Esc` abandon a blank add
+- **Timeframe filter** (calendar date picker in the thin top bar) shows only jobs whose **Date started** is that America/Chicago day. Jobs without a start date (`—`, Unscheduled, or missing `schedule.scheduled_start`) are hidden while the filter is on. Clear the date to see the full board again. The per-row **Timeframe** column is still a local promised date and does not filter the list.
 - **Sync** (compact control at the top of the spreadsheet) pulls open Housecall Pro jobs now — same `/api/jobs/hcp` merge as morning sync, forced even after the 7am run. Status shows Syncing…, then job count / last sync time, or the API error. Phones can still pull down to sync.
 - **Remove** a row with the trash control on the customer cell (confirm first). Board-only — the Housecall Pro job is not deleted.
 
