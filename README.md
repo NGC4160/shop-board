@@ -100,14 +100,15 @@ Status is a dropdown of the live NGC Housecall Pro **Jobs** pipeline stages (Pip
 25. On Hold
 26. Invoice Paid
 
-v2 stores data in the browser (`localStorage` key `ngc-shop-board-v6`). First load seeds example carts so the board is not empty. Existing v5 boards migrate automatically. No login.
+v2 used to store the working copy only in the browser (`localStorage` key `ngc-shop-board-v6`). The board now loads a **shared Vercel Blob store** first, then merges Housecall Pro on top. `localStorage` is a per-device cache so the sheet still paints if the network is slow. First load on a brand-new browser still seeds example carts so the board is not empty. Existing v5 boards migrate automatically. One shared shop link — no login.
 
 ## Housecall Pro morning sync (7:00 AM America/Chicago)
 
 Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handler only runs the Housecall Pro pull when the clock is **7:00 AM in America/Chicago**, so daylight saving does not drift the shop’s 7am refresh.
 
-Each shop tablet/TV then merges that job list into the local board:
+Each shop tablet/TV then merges that job list into the **shared** board:
 
+- On load, the client GETs `/api/board` (the shared store) and applies that snapshot. Morning HCP sync and **Sync** / pull-to-refresh then fetch `/api/jobs/hcp` and **merge by job number** on top of it.
 - After 7:00 AM Chicago, the first time the board or `/wall` is open (or left open overnight), it fetches `/api/jobs/hcp` and **merges by job number**.
 - Housecall Pro updates **job list, customer name, phone**, **Date started** from `schedule.scheduled_start` when the payload includes it, and **pipeline status when the API gives an exact Jobs pipeline name**. Missing schedule start is stored as empty (shown as —) and is never invented from `created_at` or sync time. Unscheduled / needs scheduling always stores and shows **—**, even if leftover `scheduled_start` is still present. **Next step and Timeframe are local/board-only** — HCP does not send or overwrite them.
 - Existing wrong customer names (including “Neighborhood Golf Carts” on residential jobs) are overwritten when HCP sends a person name. Empty HCP names are not invented. A leftover shop-as-customer name is cleared instead of kept.
@@ -120,11 +121,31 @@ Each shop tablet/TV then merges that job list into the local board:
 There is no Housecall Pro write from this app (the API key is treated as read-only). Delete is **board-only**:
 
 1. Tap the trash icon on the customer cell (44px target). Confirm **Remove**.
-2. The row leaves this device’s `localStorage`. Undo is offered on the toast.
-3. That job number is remembered as dismissed, so the next morning sync or pull-to-refresh will not put it back.
+2. The row leaves the shared store (and this device’s `localStorage` cache). Undo is offered on the toast.
+3. That job number is remembered as dismissed on the shared store, so the next morning sync or pull-to-refresh will not put it back on any device.
 4. Press `N` and add the same job # locally if you need the row again (that clears the dismissal).
 
 Use this for stale seed rows, leftover local adds, and jobs that are done in HCP but still sitting on the tablet.
+
+## Shared store (phone + computer)
+
+The shop board is one shared sheet. Housecall Pro stays the source of truth for the job list, customer name, phone, pipeline status, Date started, and primary tech on new HCP rows. Board-only fields (next step, per-row Timeframe, notes, flags, remove-from-board / dismissed job numbers, and the remembered Timeframe filter) live in a single private Vercel Blob JSON file (`ngc-shop-board.json`) behind `GET`/`PUT /api/board`.
+
+Load order:
+
+1. Paint the per-device `localStorage` cache (`ngc-shop-board-v6`) so the sheet is not blank.
+2. GET `/api/board`. If the store has a snapshot, replace jobs / prefs / dismissed with that copy. This device’s `lastHcpSyncAt` stays local so morning HCP sync still runs on each tablet.
+3. If the store is empty and this browser already had a v6/v5 board, upload that snapshot **once** (`migrate: true`). The server ignores a second migrate so two devices cannot wipe each other. Do not open a brand-new browser first after deploy if a phone/computer already has the real board — the first existing device should load once to seed the store.
+4. Morning HCP sync, **Sync**, and pull-to-refresh then merge `/api/jobs/hcp` on top. HCP does not overwrite next step / Timeframe / notes. Sync also re-GETs `/api/board` first so the other device’s board-only edits show up without a full reload.
+
+Edits debounce ~350ms into `PUT /api/board` (last write wins). `localStorage` remains a cache, not the only persistence path.
+
+### How to test
+
+1. Add a Blob store (below) and deploy, or run `npm run dev` (uses `.data/ngc-shop-board.json` on this machine).
+2. Open the board in browser profile A. Edit a **Next step**, a per-row **Timeframe**, or Remove a row.
+3. Open the same URL in browser profile B (or another device). Refresh, or tap **Sync**.
+4. Profile B should show the same board-only edit. Housecall Pro jobs/status/schedule still update from Sync as before.
 
 ### Required Vercel environment variables
 
@@ -133,7 +154,10 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
+| `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
 | `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
+
+Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
 
 Optional: `HOUSECALL_PRO_AUTH_SCHEME=bearer` if the key is a Bearer token instead of `Token <key>`; `HOUSECALL_PRO_COMPANY_ID` for multi-location; `HOUSECALL_PRO_API_URL` (defaults to `https://api.housecallpro.com`).
 
@@ -176,4 +200,5 @@ A `.vercel` folder in this repo should never point at CartScope.
 
 - Next.js App Router + TypeScript
 - Tailwind CSS
-- Client-side persistence (`localStorage`)
+- Shared persistence: Vercel Blob (`/api/board`) plus a `localStorage` cache
+- Local `next dev` without Blob: `.data/ngc-shop-board.json` (gitignored)

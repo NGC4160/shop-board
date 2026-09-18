@@ -1,4 +1,9 @@
-import { applyHcpJobs, getBoardSnapshot } from "@/lib/board-store";
+import {
+  applyHcpJobs,
+  getBoardSnapshot,
+  reloadSharedBoard,
+  whenSharedBoardReady,
+} from "@/lib/board-store";
 import type { HcpOpenJob } from "@/lib/hcp";
 import { shouldRunHcpClientFetch } from "@/lib/hcp-merge";
 
@@ -27,9 +32,10 @@ let inflightForce = false;
 let staleCompanyResyncDone = false;
 
 async function runHcpClientSync(force: boolean): Promise<ClientHcpSyncResult> {
-  // subscribeBoard hydrates localStorage on a microtask; wait so skip/force
-  // sees lastHcpSyncAt and any leftover "Neighborhood Golf Carts" names.
-  await Promise.resolve();
+  // Wait for localStorage + shared store so HCP merges onto the shop copy,
+  // not a stale per-device snapshot. Force sync also re-pulls shared first.
+  await whenSharedBoardReady();
+  if (force) await reloadSharedBoard();
   const snapshot = getBoardSnapshot();
   if (
     !shouldRunHcpClientFetch(

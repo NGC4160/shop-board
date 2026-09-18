@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applyHcpJobs,
+  applySharedSnapshot,
   createDraftJob,
   deleteJob,
+  exportSharedPayload,
   getBoardSnapshot,
   insertJob,
   loadSampleBoard,
   replaceBoard,
+  savePrefs,
   undoDelete,
   updateJob,
 } from "./board-store.ts";
@@ -138,6 +141,104 @@ describe("board-only delete", () => {
     assert.equal(insertJob(draft), true);
     assert.equal(getBoardSnapshot().dismissedJobNumbers.includes("173128"), false);
     assert.equal(getBoardSnapshot().jobs.some((job) => job.jobNumber === "173128"), true);
+  });
+});
+
+describe("shared board snapshot", () => {
+  it("applies jobs, prefs, and dismissals without touching lastHcpSyncAt", () => {
+    replaceBoard([
+      {
+        ...seedJobs[0],
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+        nextAction: "Local only",
+      },
+    ]);
+    applyHcpJobs([
+      {
+        hcpId: "hcp-173128",
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+        phone: "",
+        status: "Scheduled",
+        statusIsPipeline: false,
+        primaryTech: "",
+      },
+    ]);
+    const lastSync = getBoardSnapshot().lastHcpSyncAt;
+    assert.ok(typeof lastSync === "number");
+
+    const ok = applySharedSnapshot({
+      jobs: [
+        {
+          ...seedJobs[1],
+          jobNumber: "173200",
+          customerName: "Sharon Badeaux",
+          nextAction: "Call when controller comes in",
+          timeExpectation: "2026-09-20",
+          notes: "Shared note",
+        },
+      ],
+      prefs: { hideClosed: false, timeframe: "2026-09-18" },
+      dismissedJobNumbers: ["1842"],
+    });
+    assert.equal(ok, true);
+    const next = getBoardSnapshot();
+    assert.equal(next.lastHcpSyncAt, lastSync);
+    assert.equal(next.jobs.length, 1);
+    assert.equal(next.jobs[0]?.jobNumber, "173200");
+    assert.equal(next.jobs[0]?.nextAction, "Call when controller comes in");
+    assert.equal(next.jobs[0]?.notes, "Shared note");
+    assert.equal(next.prefs.timeframe, "2026-09-18");
+    assert.equal(next.prefs.hideClosed, false);
+    assert.deepEqual(next.dismissedJobNumbers, ["1842"]);
+    assert.equal("lastHcpSyncAt" in exportSharedPayload(), false);
+  });
+
+  it("keeps board-only next step and timeframe when HCP merges after a shared load", () => {
+    applySharedSnapshot({
+      jobs: [
+        {
+          ...seedJobs[0],
+          id: "hcp-173128",
+          jobNumber: "173128",
+          customerName: "Stale Name",
+          nextAction: "Text when ready",
+          timeExpectation: "2026-09-21",
+          notes: "Battery on the bench",
+          primaryTech: "Hayden Silva",
+        },
+      ],
+      prefs: { hideClosed: true, timeframe: "" },
+      dismissedJobNumbers: [],
+    });
+    const { updated } = applyHcpJobs([
+      {
+        hcpId: "173128",
+        jobNumber: "173128",
+        customerName: "Mike Landry",
+        phone: "985-555-0100",
+        status: "In Progress",
+        statusIsPipeline: true,
+        primaryTech: "Marlon Gray",
+      },
+    ]);
+    assert.equal(updated, 1);
+    const job = getBoardSnapshot().jobs.find((item) => item.jobNumber === "173128");
+    assert.ok(job);
+    assert.equal(job.customerName, "Mike Landry");
+    assert.equal(job.status, "In Progress");
+    assert.equal(job.nextAction, "Text when ready");
+    assert.equal(job.timeExpectation, "2026-09-21");
+    assert.equal(job.notes, "Battery on the bench");
+  });
+
+  it("remembers the board-level timeframe filter in prefs", () => {
+    loadSampleBoard();
+    savePrefs({ timeframe: "2026-09-18" });
+    assert.equal(getBoardSnapshot().prefs.timeframe, "2026-09-18");
+    savePrefs({ timeframe: "" });
+    assert.equal(getBoardSnapshot().prefs.timeframe, "");
   });
 });
 
