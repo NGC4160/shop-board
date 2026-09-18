@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# local shared-board file used by `next dev` when Blob is not configured
+/.data/
+
 # production
 /build
 

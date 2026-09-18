@@ -17,6 +17,7 @@ import {
   getBoardSnapshot,
   getServerBoardSnapshot,
   insertJob,
+  savePrefs,
   subscribeBoard,
   undoDelete,
   updateJob,
@@ -46,8 +47,8 @@ export function ShopApp() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [timeframe, setTimeframe] = useState("");
   const [lastSyncResult, setLastSyncResult] = useState<ClientHcpSyncResult | null>(null);
+  const timeframe = board.prefs.timeframe ?? "";
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
 
@@ -233,7 +234,10 @@ export function ShopApp() {
         data-testid="hcp-refresh"
         style={{ height: Math.max(40, refreshing ? 44 : pull) }}
       >
-        <TimeframeFilter value={timeframe} onChange={setTimeframe} />
+        <TimeframeFilter
+          value={timeframe}
+          onChange={(value) => savePrefs({ timeframe: value })}
+        />
         <p className="min-w-0 flex-1 truncate" role="status" aria-live="polite">
           {syncStatus}
         </p>
@@ -259,7 +263,7 @@ export function ShopApp() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setTimeframe("")}
+                  onClick={() => savePrefs({ timeframe: "" })}
                   className="mt-4 inline-flex h-11 items-center rounded-sm border border-border bg-surface-2 px-3 text-sm font-semibold"
                 >
                   Clear timeframe
