@@ -1,5 +1,5 @@
 import { authorizePartsWrite, isPartsWriteConfigured } from "@/lib/parts-auth";
-import { upsertPartLine } from "@/lib/parts";
+import { removePartLine, upsertPartLine } from "@/lib/parts";
 import {
   emptySharedPartsDocument,
   parseSharedPartsDocument,
@@ -17,6 +17,52 @@ const noStore = { "Cache-Control": "no-store" };
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: noStore });
+}
+
+function partsWriteUnauthorized(request: Request): Response | null {
+  if (!isPartsWriteConfigured()) {
+    return json(
+      {
+        ok: false,
+        error: "PARTS_WRITE_TOKEN is not configured on this deployment.",
+      },
+      503,
+    );
+  }
+  if (!authorizePartsWrite(request)) {
+    return json({ ok: false, error: "Unauthorized" }, 401);
+  }
+  return null;
+}
+
+function partsStoreUnavailable(): Response | null {
+  if (isPartsStoreConfigured()) return null;
+  return json(
+    {
+      ok: false,
+      configured: false,
+      error:
+        "Shared parts store is not configured. Add a Vercel Blob store and set BLOB_READ_WRITE_TOKEN.",
+    },
+    503,
+  );
+}
+
+/** Prefer `?id=`; otherwise the JSON body (same `{ id }` shape as POST). */
+async function readDeleteTarget(request: Request): Promise<
+  { ok: true; incoming: unknown } | { ok: false; response: Response }
+> {
+  const queryId = new URL(request.url).searchParams.get("id");
+  const raw = await request.text();
+  let body: unknown = null;
+  if (raw.trim()) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      if (!queryId?.trim()) return { ok: false, response: json({ ok: false, error: "Invalid JSON" }, 400) };
+    }
+  }
+  return { ok: true, incoming: queryId?.trim() ? queryId : body };
 }
 
 export async function GET() {
@@ -95,29 +141,10 @@ export async function PUT(request: Request) {
  * Body: one part line with a stable `id`. Merges into the parts store only.
  */
 export async function POST(request: Request) {
-  if (!isPartsWriteConfigured()) {
-    return json(
-      {
-        ok: false,
-        error: "PARTS_WRITE_TOKEN is not configured on this deployment.",
-      },
-      503,
-    );
-  }
-  if (!authorizePartsWrite(request)) {
-    return json({ ok: false, error: "Unauthorized" }, 401);
-  }
-  if (!isPartsStoreConfigured()) {
-    return json(
-      {
-        ok: false,
-        configured: false,
-        error:
-          "Shared parts store is not configured. Add a Vercel Blob store and set BLOB_READ_WRITE_TOKEN.",
-      },
-      503,
-    );
-  }
+  const denied = partsWriteUnauthorized(request);
+  if (denied) return denied;
+  const unavailable = partsStoreUnavailable();
+  if (unavailable) return unavailable;
 
   let body: unknown;
   try {
@@ -142,6 +169,49 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Parts upsert failed", error);
+    return json(
+      {
+        ok: false,
+        configured: true,
+        error: "Shared parts store could not be written",
+      },
+      502,
+    );
+  }
+}
+
+/**
+ * Token-gated remove for the Parts process (same Bearer token as POST).
+ * Authorization: Bearer $PARTS_WRITE_TOKEN
+ * Target: `?id=` or JSON `{ "id": "…" }`. Removes that line only.
+ */
+export async function DELETE(request: Request) {
+  const denied = partsWriteUnauthorized(request);
+  if (denied) return denied;
+  const unavailable = partsStoreUnavailable();
+  if (unavailable) return unavailable;
+
+  const target = await readDeleteTarget(request);
+  if (!target.ok) return target.response;
+
+  try {
+    const current = (await readSharedParts()) ?? emptySharedPartsDocument();
+    const result = removePartLine(current.parts, target.incoming);
+    if (!result.ok) {
+      return json({ ok: false, error: result.error }, result.missing ? 404 : 400);
+    }
+    const next = toSharedPartsDocument({ parts: result.parts }, Date.now());
+    await writeSharedParts(next);
+    return json({
+      ok: true,
+      empty: next.parts.length === 0,
+      configured: true,
+      wrote: true,
+      removed: result.removed,
+      ...next,
+    });
+  } catch (error) {
+    console.error("Parts delete failed", error);
     return json(
       {
         ok: false,

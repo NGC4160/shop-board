@@ -271,6 +271,42 @@ export function upsertPartLine(
   };
 }
 
+/** Accept a raw id string or an object with `id` (POST/DELETE body). */
+export function parsePartIdInput(
+  value: unknown,
+): { ok: true; id: string } | { ok: false; error: string } {
+  const raw =
+    typeof value === "string" || value == null
+      ? value
+      : typeof value === "object"
+        ? (value as { id?: unknown }).id
+        : undefined;
+  const error = partIdError(raw);
+  if (error) return { ok: false, error };
+  return { ok: true, id: normalizePartId(raw) };
+}
+
+/**
+ * Remove one line by stable id. Other lines are unchanged.
+ * Does not invent a replacement row.
+ */
+export function removePartLine(
+  parts: readonly PartLine[],
+  incoming: unknown,
+):
+  | { ok: true; parts: PartLine[]; removed: PartLine }
+  | { ok: false; error: string; missing?: boolean } {
+  const parsed = parsePartIdInput(incoming);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const removed = parts.find((item) => item.id === parsed.id);
+  if (!removed) return { ok: false, error: "Part not found", missing: true };
+  return {
+    ok: true,
+    parts: parts.filter((item) => item.id !== parsed.id),
+    removed,
+  };
+}
+
 export function partMatchesSearch(part: PartLine, search: string): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) return true;
