@@ -6,6 +6,8 @@ import {
   inferCarrier,
   mergePartLine,
   partIdError,
+  parsePartIdInput,
+  removePartLine,
   sanitizeLoadedParts,
   sanitizePartLine,
   sortParts,
@@ -52,6 +54,35 @@ describe("sanitize and upsert", () => {
     assert.equal(second.line.status, "Shipped");
     assert.equal(second.line.carrier, "UPS");
     assert.equal(second.line.trackingNumber, "1Z999AA10123456784");
+  });
+
+  it("removes one line by id and leaves the rest", () => {
+    const first = upsertPartLine([], {
+      id: "line-keep",
+      customerName: "SAMPLE Keep",
+      partDescription: "Example solenoid",
+    });
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    const second = upsertPartLine(first.parts, {
+      id: "line-drop",
+      customerName: "SAMPLE Drop",
+      partDescription: "Example charger",
+      status: "Received",
+    });
+    assert.equal(second.ok, true);
+    if (!second.ok) return;
+    const removed = removePartLine(second.parts, { id: "line-drop" });
+    assert.equal(removed.ok, true);
+    if (!removed.ok) return;
+    assert.equal(removed.removed.id, "line-drop");
+    assert.equal(removed.parts.length, 1);
+    assert.equal(removed.parts[0]?.id, "line-keep");
+    assert.equal(removed.parts[0]?.customerName, "SAMPLE Keep");
+    assert.equal(removePartLine(removed.parts, "line-drop").ok, false);
+    assert.equal(parsePartIdInput("").ok, false);
+    assert.equal(parsePartIdInput({ id: "has space" }).ok, false);
+    assert.equal(parsePartIdInput({ id: "line-keep" }).ok, true);
   });
 
   it("drops unknown statuses and leftover expected-date phrases", () => {
