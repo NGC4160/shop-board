@@ -173,16 +173,6 @@ export function PartsApp() {
             ))}
           </select>
         </label>
-        <input
-          aria-label="Search customer or job"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Customer or job #"
-          className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-background px-2 text-sm text-foreground"
-        />
-        <p className="hidden min-w-0 truncate sm:block" role="status" aria-live="polite">
-          {refreshLabel}
-        </p>
         <button
           type="button"
           onClick={startDraft}
@@ -191,6 +181,16 @@ export function PartsApp() {
           <Plus className="size-3.5" aria-hidden />
           Add
         </button>
+        <input
+          aria-label="Search customer or job"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Customer or job #"
+          className="h-8 min-w-0 w-full basis-full rounded-sm border border-border bg-background px-2 text-sm text-foreground sm:flex-1 sm:basis-auto"
+        />
+        <p className="hidden min-w-0 truncate md:block" role="status" aria-live="polite">
+          {refreshLabel}
+        </p>
       </div>
 
       <main ref={scrollRef} className="board-scroll min-h-0 min-w-0 flex-1">
