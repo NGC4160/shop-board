@@ -23,6 +23,7 @@ One dense table on one page. Rows are jobs. Columns are these fields, in this or
 
 Every floor field edits **inline**. There is no fat top chrome (no Add cart button, toolbar, stats cards, search, or chip filters), no cart / bay / notes / phone columns, and no details drawer. The thin top bar has **Timeframe** (board-level date filter) and **Sync**. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
 
+- **Parts board** at `/parts` — incoming parts and who they are for (separate shared store from jobs)
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
 - **Keyboard:** `N` add cart locally, `Esc` abandon a blank add
 - **Timeframe filter** (calendar date picker in the thin top bar) shows only jobs whose **Date started** is that America/Chicago day. Jobs without a start date (`—`, Unscheduled, or missing `schedule.scheduled_start`) are hidden while the filter is on. Clear the date to see the full board again. The per-row **Timeframe** column is still a local promised date and does not filter the list.
@@ -147,6 +148,38 @@ Edits debounce ~350ms into `PUT /api/board` (last write wins). `localStorage` re
 3. Open the same URL in browser profile B (or another device). Refresh, or tap **Sync**.
 4. Profile B should show the same board-only edit. Housecall Pro jobs/status/schedule still update from Sync as before.
 
+## Parts board (`/parts`)
+
+A second shop-floor sheet for **incoming parts** — not mixed into the job columns. Ryan and Jesse open `/parts` on any phone or computer and see the same list: who a line is for, job # when known, part, vendor, status, carrier/tracking, expected date, and a short note.
+
+Parts live in a **separate** shared Blob file (`ngc-parts-board.json`). Editing a part cannot change a job card. `localStorage` is not the source of truth for parts.
+
+Statuses: **Ordered**, **Shipped**, **Out for delivery**, **Received**, **Problem**. Filter by status and search by customer or job #. Tracking numbers link to USPS, UPS, or FedEx when a number is present.
+
+The board starts empty (no invented customers or tracking numbers). Press `N` or **Add** to put a line on the shared sheet. The Parts process can also upsert by a stable `id`:
+
+```bash
+curl -X POST https://ngc-shop-board.vercel.app/api/parts \
+  -H "Authorization: Bearer $PARTS_WRITE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "po-1001-line-1",
+    "customerName": "SAMPLE Customer",
+    "jobNumber": "SAMPLE",
+    "partDescription": "Example 48V charger — not a real order",
+    "vendor": "Example Vendor",
+    "status": "Shipped",
+    "carrier": "UPS",
+    "trackingNumber": "",
+    "expectedDate": "2026-10-10",
+    "note": "Fake sample row"
+  }'
+```
+
+`GET /api/parts` is open, same as `GET /api/board`. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
+
+Local `next dev` uses `.data/ngc-parts-board.json` (gitignored), next to the job-board file.
+
 ### Required Vercel environment variables
 
 Set these on the **ngc-shop-board** project (Production). See `.env.example`.
@@ -156,6 +189,7 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
 | `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
 | `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
+| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (same open snapshot pattern as jobs) and write a **separate** Blob file (`ngc-parts-board.json`). |
 
 Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
 
@@ -174,7 +208,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Wall display: [http://localhost:3000/wall](http://localhost:3000/wall).
+Open [http://localhost:3000](http://localhost:3000). Parts board: [http://localhost:3000/parts](http://localhost:3000/parts). Wall display: [http://localhost:3000/wall](http://localhost:3000/wall).
 
 ```bash
 npm run build

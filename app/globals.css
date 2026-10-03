@@ -150,7 +150,8 @@
   .board-refresh {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 0.75rem;
     min-height: 2.5rem;
     padding: 0.25rem 0.75rem;
@@ -223,6 +224,59 @@
     width: 16%;
   }
 
+  .parts-toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    row-gap: 0.4rem;
+  }
+
+  .parts-sheet {
+    --parts-index-w: 2.75rem;
+    --parts-customer-w: 12rem;
+    --parts-job-w: 7rem;
+    --parts-part-w: 14rem;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: max(100%, 86rem);
+  }
+
+  .parts-col-index {
+    width: var(--parts-index-w);
+  }
+
+  .parts-col-customer {
+    width: var(--parts-customer-w);
+  }
+
+  .parts-col-job {
+    width: var(--parts-job-w);
+  }
+
+  .parts-col-part {
+    width: var(--parts-part-w);
+  }
+
+  .parts-col-vendor {
+    width: 11%;
+  }
+
+  .parts-col-status {
+    width: 13%;
+  }
+
+  .parts-col-tracking {
+    width: 16%;
+  }
+
+  .parts-col-date {
+    width: 12%;
+  }
+
+  .parts-col-note {
+    width: 14%;
+  }
+
   .board-row-index {
     display: flex;
     height: 2.75rem;
@@ -292,10 +346,18 @@
       padding-inline: 0.25rem;
       font-size: 0.75rem;
     }
+
+    .parts-sheet {
+      --parts-index-w: 2.25rem;
+      --parts-customer-w: 9rem;
+      --parts-job-w: 5.75rem;
+      --parts-part-w: 10rem;
+    }
   }
 
   @media (min-width: 1280px) {
-    .board-sheet {
+    .board-sheet,
+    .parts-sheet {
       width: 100%;
     }
   }
@@ -319,7 +381,17 @@
   .board-col-tech,
   .board-col-status,
   .board-col-next,
-  .board-col-timeframe {
+  .board-col-timeframe,
+  .parts-sheet,
+  .parts-col-index,
+  .parts-col-customer,
+  .parts-col-job,
+  .parts-col-part,
+  .parts-col-vendor,
+  .parts-col-status,
+  .parts-col-tracking,
+  .parts-col-date,
+  .parts-col-note {
     width: auto !important;
   }
 

@@ -31,6 +31,7 @@ import {
 } from "@/lib/hcp-client";
 import { formatHcpSyncFeedback } from "@/lib/hcp-sync-status";
 import { BoardTable, DraftComposer } from "@/components/shop/board-table";
+import { BoardNav } from "@/components/shop/board-nav";
 import { HcpSyncButton } from "@/components/shop/hcp-sync-button";
 import { TimeframeFilter } from "@/components/shop/timeframe-filter";
 import { RemoveConfirm } from "@/components/shop/remove-confirm";
@@ -232,8 +233,9 @@ export function ShopApp() {
         className="board-refresh no-print"
         data-refreshing={refreshing || undefined}
         data-testid="hcp-refresh"
-        style={{ height: Math.max(40, refreshing ? 44 : pull) }}
+        style={{ minHeight: Math.max(40, refreshing ? 44 : pull) }}
       >
+        <BoardNav current="jobs" />
         <TimeframeFilter
           value={timeframe}
           onChange={(value) => savePrefs({ timeframe: value })}
