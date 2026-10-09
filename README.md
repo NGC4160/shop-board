@@ -176,7 +176,9 @@ curl -X POST https://ngc-shop-board.vercel.app/api/parts \
   }'
 ```
 
-`GET /api/parts` is open, same as `GET /api/board`. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line (omitted fields stay). When a part is received it comes off the board — `DELETE /api/parts` with the same Bearer token and that `id` (JSON body or `?id=`). An unauthenticated DELETE is rejected. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
+`GET /api/parts` is open, same as `GET /api/board`. An open `/parts` page refreshes about every 12 seconds and **only reads** — it does not write unless someone on the floor actually edits a line. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line (omitted fields stay). When a part is received it comes off the board — `DELETE /api/parts` with the same Bearer token and that `id` (JSON body or `?id=`). An unauthenticated DELETE is rejected. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
+
+Shop-floor `PUT /api/parts` stays open, like the job board, so Ryan and Jesse can edit in a browser. The bot token is not put on the page (that would also unlock POST/DELETE). A save **merges by line**: a tablet that loaded an older list cannot wipe a row the Parts bot (or another browser) added after that page loaded.
 
 ```bash
 curl -X DELETE https://ngc-shop-board.vercel.app/api/parts \
@@ -196,7 +198,7 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
 | `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
 | `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
-| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id`. `DELETE /api/parts` removes one line by that same `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (same open snapshot pattern as jobs) and write a **separate** Blob file (`ngc-parts-board.json`). |
+| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id`. `DELETE /api/parts` removes one line by that same `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (open, same as jobs — not this token) and write a **separate** Blob file (`ngc-parts-board.json`). A stale PUT merges by line instead of replacing the whole list. |
 
 Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
 

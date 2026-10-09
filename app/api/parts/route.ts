@@ -1,8 +1,8 @@
 import { authorizePartsWrite, isPartsWriteConfigured } from "@/lib/parts-auth";
 import { removePartLine, upsertPartLine } from "@/lib/parts";
 import {
+  applyIncomingPartsPut,
   emptySharedPartsDocument,
-  parseSharedPartsDocument,
   toSharedPartsDocument,
 } from "@/lib/parts-board";
 import {
@@ -87,7 +87,13 @@ export async function GET() {
   }
 }
 
-/** Shop-floor snapshot write. Writes `ngc-parts-board.json` only — never the job board. */
+/**
+ * Shop-floor snapshot write. No PARTS_WRITE_TOKEN — same open pattern as
+ * PUT /api/board — so Ryan/Jesse can edit in a browser. Putting the bot token
+ * on this page would also unlock POST/DELETE. Merges by line so a stale
+ * tablet cannot wipe rows added after it loaded. Writes ngc-parts-board.json
+ * only — never the job board.
+ */
 export async function PUT(request: Request) {
   if (!isPartsStoreConfigured()) {
     return json(
@@ -108,12 +114,11 @@ export async function PUT(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  const parsed = parseSharedPartsDocument(body);
-  if (!parsed) return json({ ok: false, error: "Parts payload was not an object" }, 400);
-
-  const next = toSharedPartsDocument(parsed, Date.now());
-
   try {
+    const current = await readSharedParts();
+    const result = applyIncomingPartsPut(current, body);
+    if (!result.ok) return json({ ok: false, error: result.error }, 400);
+    const next = result.doc;
     await writeSharedParts(next);
     return json({
       ok: true,

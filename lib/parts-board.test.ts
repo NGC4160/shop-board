@@ -3,8 +3,11 @@ import { describe, it } from "node:test";
 import { seedJobs } from "./jobs.ts";
 import { SAMPLE_PART_LINE } from "./parts.ts";
 import {
+  applyIncomingPartsPut,
   emptySharedPartsDocument,
+  mergeSharedPartsDocuments,
   parseSharedPartsDocument,
+  readPartsWriteBaseUpdatedAt,
   toSharedPartsDocument,
 } from "./parts-board.ts";
 import { parseSharedBoardDocument } from "./shared-board.ts";
@@ -57,5 +60,56 @@ describe("parts document isolation", () => {
     const doc = emptySharedPartsDocument(1);
     assert.equal(doc.version, 1);
     assert.deepEqual(Object.keys(doc).sort(), ["parts", "updatedAt", "version"]);
+  });
+});
+
+describe("stale parts PUT merge", () => {
+  const older = { ...SAMPLE_PART_LINE, id: "line-old", updatedAt: 1_000 };
+  const newer = {
+    ...SAMPLE_PART_LINE,
+    id: "line-bot",
+    customerName: "SAMPLE Bot",
+    partDescription: "Example solenoid — added after the page loaded",
+    updatedAt: 2_000,
+  };
+
+  it("treats a missing client updatedAt as unknown, not now", () => {
+    assert.equal(readPartsWriteBaseUpdatedAt({ parts: [] }), 0);
+    assert.equal(readPartsWriteBaseUpdatedAt({ parts: [], updatedAt: null }), 0);
+    assert.equal(readPartsWriteBaseUpdatedAt({ parts: [], updatedAt: 1_000 }), 1_000);
+  });
+
+  it("keeps a line added after the client's last-seen document time", () => {
+    const current = toSharedPartsDocument({ parts: [older, newer] }, 2_000);
+    const stale = mergeSharedPartsDocuments(current, { parts: [older] }, 1_000);
+    assert.deepEqual(
+      stale.parts.map((line) => line.id).sort(),
+      ["line-bot", "line-old"],
+    );
+    assert.equal(stale.parts.find((line) => line.id === "line-bot")?.customerName, "SAMPLE Bot");
+  });
+
+  it("still removes a line the client already knew about", () => {
+    const current = toSharedPartsDocument({ parts: [older] }, 1_000);
+    const deleted = mergeSharedPartsDocuments(current, { parts: [] }, 1_000);
+    assert.equal(deleted.parts.length, 0);
+  });
+
+  it("lets a newer incoming edit win on the same id", () => {
+    const current = toSharedPartsDocument({ parts: [older] }, 1_000);
+    const edited = { ...older, note: "On the shelf", updatedAt: 3_000 };
+    const merged = mergeSharedPartsDocuments(current, { parts: [edited] }, 1_000);
+    assert.equal(merged.parts.length, 1);
+    assert.equal(merged.parts[0]?.note, "On the shelf");
+  });
+
+  it("does not let a stale save drop newer lines", () => {
+    const current = toSharedPartsDocument({ parts: [older, newer] }, 2_000);
+    const result = applyIncomingPartsPut(current, { parts: [older], updatedAt: 1_000 }, 3_000);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.doc.parts.some((line) => line.id === "line-bot"), true);
+    assert.equal(result.doc.parts.some((line) => line.id === "line-old"), true);
+    assert.equal(result.doc.updatedAt, 3_000);
   });
 });
