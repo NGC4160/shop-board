@@ -30,6 +30,10 @@ let hydrated = false;
 let sharedConfigured = true;
 let sharedHydrated = false;
 let sharedPushTimer: number | null = null;
+/** Local edits that still need a PUT. Idle refresh must not write. */
+let dirty = false;
+/** Last server document `updatedAt` this page applied. Sent on PUT for merge. */
+let acknowledgedUpdatedAt: number | null = null;
 let sharedReadyResolve: (() => void) | null = null;
 const sharedReady = new Promise<void>((resolve) => {
   sharedReadyResolve = resolve;
@@ -41,19 +45,24 @@ function emit() {
   listeners.forEach((listener) => listener());
 }
 
+/** Browser `window`, including Node tests that assign `globalThis.window`. */
+function getWindow(): (Window & typeof globalThis) | null {
+  return typeof globalThis.window === "undefined" ? null : globalThis.window;
+}
+
 function markSharedReady() {
   sharedHydrated = true;
   sharedReadyResolve?.();
 }
 
 export function whenSharedPartsReady(): Promise<void> {
-  if (typeof window === "undefined") return Promise.resolve();
+  if (!getWindow()) return Promise.resolve();
   return sharedReady;
 }
 
 export function subscribeParts(onStoreChange: StoreListener): () => void {
   listeners.add(onStoreChange);
-  if (!hydrated && typeof window !== "undefined") {
+  if (!hydrated && getWindow()) {
     hydrated = true;
     queueMicrotask(() => {
       void hydrateSharedParts();
@@ -78,7 +87,7 @@ export function getServerPartsSnapshot(): PartsSnapshot {
 }
 
 export function exportSharedPartsPayload(): SharedPartsPayload {
-  return { parts: snapshot.parts };
+  return { parts: snapshot.parts, updatedAt: acknowledgedUpdatedAt };
 }
 
 export function applySharedPartsSnapshot(shared: SharedPartsDocument | SharedPartsPayload) {
@@ -88,14 +97,18 @@ export function applySharedPartsSnapshot(shared: SharedPartsDocument | SharedPar
     parts: parsed.parts,
     updatedAt: parsed.updatedAt,
   };
+  acknowledgedUpdatedAt = parsed.updatedAt;
+  dirty = false;
   emit();
   return true;
 }
 
 function scheduleSharedPush() {
-  if (typeof window === "undefined" || !sharedHydrated || !sharedConfigured) return;
-  if (sharedPushTimer != null) window.clearTimeout(sharedPushTimer);
-  sharedPushTimer = window.setTimeout(() => {
+  const win = getWindow();
+  if (!win || !sharedHydrated || !sharedConfigured) return;
+  dirty = true;
+  if (sharedPushTimer != null) win.clearTimeout(sharedPushTimer);
+  sharedPushTimer = win.setTimeout(() => {
     sharedPushTimer = null;
     void pushSharedParts();
   }, 350);
@@ -106,12 +119,13 @@ function commit(next: PartsSnapshot, remember = false) {
     undoStack = { parts: snapshot.parts };
   }
   snapshot = next;
+  dirty = true;
   scheduleSharedPush();
   emit();
 }
 
 async function pushSharedParts(): Promise<SharedPartsDocument | null> {
-  if (typeof window === "undefined" || !sharedConfigured) return null;
+  if (!getWindow() || !sharedConfigured || !dirty) return null;
   try {
     const response = await fetch("/api/parts", {
       method: "PUT",
@@ -128,7 +142,11 @@ async function pushSharedParts(): Promise<SharedPartsDocument | null> {
     }
     if (!response.ok || !body) return null;
     const parsed = parseSharedPartsDocument(body);
-    if (parsed) snapshot = { parts: parsed.parts, updatedAt: parsed.updatedAt };
+    if (parsed) {
+      snapshot = { parts: parsed.parts, updatedAt: parsed.updatedAt };
+      acknowledgedUpdatedAt = parsed.updatedAt;
+      dirty = false;
+    }
     return parsed;
   } catch {
     return null;
@@ -136,12 +154,13 @@ async function pushSharedParts(): Promise<SharedPartsDocument | null> {
 }
 
 export async function flushSharedPartsPush(): Promise<void> {
-  if (typeof window === "undefined") return;
+  const win = getWindow();
+  if (!win) return;
   if (sharedPushTimer != null) {
-    window.clearTimeout(sharedPushTimer);
+    win.clearTimeout(sharedPushTimer);
     sharedPushTimer = null;
   }
-  if (sharedHydrated && sharedConfigured) await pushSharedParts();
+  if (dirty && sharedHydrated && sharedConfigured) await pushSharedParts();
 }
 
 type PartsApiResponse = SharedPartsDocument & {
@@ -159,7 +178,7 @@ async function fetchSharedParts(): Promise<PartsApiResponse | null> {
 }
 
 export async function hydrateSharedParts(): Promise<void> {
-  if (typeof window === "undefined") {
+  if (!getWindow()) {
     markSharedReady();
     return;
   }
@@ -183,10 +202,14 @@ export async function hydrateSharedParts(): Promise<void> {
 }
 
 export async function reloadSharedParts(): Promise<boolean> {
-  await flushSharedPartsPush();
-  if (typeof window === "undefined" || !sharedConfigured) return false;
+  if (!getWindow() || !sharedConfigured) return false;
+  if (dirty) {
+    await flushSharedPartsPush();
+    return true;
+  }
   try {
     const body = await fetchSharedParts();
+    if (dirty) return false;
     if (!body || body.ok === false || body.configured === false) return false;
     if (body.empty) {
       applySharedPartsSnapshot(emptySharedPartsDocument());
@@ -196,6 +219,22 @@ export async function reloadSharedParts(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Test helper: wipe in-memory board state between cases. */
+export function resetPartsStoreForTests() {
+  const win = getWindow();
+  if (win && sharedPushTimer != null) {
+    win.clearTimeout(sharedPushTimer);
+  }
+  sharedPushTimer = null;
+  snapshot = { parts: [], updatedAt: null };
+  acknowledgedUpdatedAt = null;
+  dirty = false;
+  sharedConfigured = true;
+  sharedHydrated = false;
+  hydrated = false;
+  undoStack = null;
 }
 
 export function replaceParts(parts: PartLine[], remember = false) {
