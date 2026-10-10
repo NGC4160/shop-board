@@ -5,6 +5,7 @@ export const PART_STATUSES = [
   "Shipped",
   "Out for delivery",
   "Received",
+  "Checked in",
   "Problem",
 ] as const;
 
@@ -47,6 +48,7 @@ export const PART_STATUS_CHIP: Record<PartStatus, string> = {
   Shipped: "bg-chip-wait text-chip-wait-fg",
   "Out for delivery": "bg-chip-bay text-chip-bay-fg",
   Received: "bg-chip-ready text-chip-ready-fg",
+  "Checked in": "bg-chip-check text-chip-check-fg",
   Problem: "bg-chip-clay text-chip-clay-fg",
 };
 
@@ -56,6 +58,7 @@ const STATUS_RANK: Record<PartStatus, number> = {
   Ordered: 2,
   Problem: 3,
   Received: 4,
+  "Checked in": 5,
 };
 
 /** Obviously fake demo row — not a real customer, order, or tracking number. */

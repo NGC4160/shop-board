@@ -41,6 +41,12 @@ describe("parts store isolation", () => {
       getPartsSnapshot().parts.find((part) => part.id === "sample-demo-part")?.status,
       "Received",
     );
+    assert.equal(updatePart("sample-demo-part", { status: "Checked in" }), true);
+    assert.equal(
+      getPartsSnapshot().parts.find((part) => part.id === "sample-demo-part")?.status,
+      "Checked in",
+    );
+    assert.equal(getPartsSnapshot().parts.length, 1);
     assert.deepEqual(
       getBoardSnapshot().jobs.map((job) => job.id),
       jobsBefore.map((job) => job.id),
