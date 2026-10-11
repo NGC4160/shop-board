@@ -56,6 +56,16 @@ describe("parts document isolation", () => {
     assert.equal(asParts.parts.length, 0);
   });
 
+  it("keeps a Checked in line instead of dropping it as received", () => {
+    const parsed = parseSharedPartsDocument({
+      parts: [{ ...SAMPLE_PART_LINE, id: "line-check", status: "Checked in" }],
+    });
+    assert.ok(parsed);
+    assert.equal(parsed.parts.length, 1);
+    assert.equal(parsed.parts[0]?.status, "Checked in");
+    assert.equal(parsed.parts[0]?.id, "line-check");
+  });
+
   it("stamps version 1 without a jobs key", () => {
     const doc = emptySharedPartsDocument(1);
     assert.equal(doc.version, 1);
@@ -101,6 +111,21 @@ describe("stale parts PUT merge", () => {
     const merged = mergeSharedPartsDocuments(current, { parts: [edited] }, 1_000);
     assert.equal(merged.parts.length, 1);
     assert.equal(merged.parts[0]?.note, "On the shelf");
+  });
+
+  it("keeps a newer Checked in line when a stale page saves another row", () => {
+    const checkedIn = {
+      ...SAMPLE_PART_LINE,
+      id: "line-checked-in",
+      status: "Checked in" as const,
+      updatedAt: 2_000,
+    };
+    const current = toSharedPartsDocument({ parts: [older, checkedIn] }, 2_000);
+    const result = applyIncomingPartsPut(current, { parts: [older], updatedAt: 1_000 }, 3_000);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.doc.parts.some((line) => line.id === "line-checked-in"), true);
+    assert.equal(result.doc.parts.find((line) => line.id === "line-checked-in")?.status, "Checked in");
   });
 
   it("does not let a stale save drop newer lines", () => {

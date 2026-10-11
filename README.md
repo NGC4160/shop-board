@@ -154,7 +154,7 @@ A second shop-floor sheet for **incoming parts** — not mixed into the job colu
 
 Parts live in a **separate** shared Blob file (`ngc-parts-board.json`). Editing a part cannot change a job card. `localStorage` is not the source of truth for parts.
 
-Statuses: **Ordered**, **Shipped**, **Out for delivery**, **Received**, **Problem**. Filter by status and search by customer or job #. Tracking numbers link to USPS, UPS, or FedEx when a number is present.
+Statuses: **Ordered**, **Shipped**, **Out for delivery**, **Received**, **Checked in**, **Problem**. Filter by status and search by customer or job #. Tracking numbers link to USPS, UPS, or FedEx when a number is present. Marking a line **Checked in** does not delete it — the Parts process removes that id on its next regular update.
 
 The board starts empty (no invented customers or tracking numbers). Press `N` or **Add** to put a line on the shared sheet. The Parts process can also upsert by a stable `id`:
 
@@ -176,7 +176,7 @@ curl -X POST https://ngc-shop-board.vercel.app/api/parts \
   }'
 ```
 
-`GET /api/parts` is open, same as `GET /api/board`. An open `/parts` page refreshes about every 12 seconds and **only reads** — it does not write unless someone on the floor actually edits a line. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line (omitted fields stay). When a part is received it comes off the board — `DELETE /api/parts` with the same Bearer token and that `id` (JSON body or `?id=`). An unauthenticated DELETE is rejected. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
+`GET /api/parts` is open, same as `GET /api/board`. An open `/parts` page refreshes about every 12 seconds and **only reads** — it does not write unless someone on the floor actually edits a line. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line (omitted fields stay). Shop-floor staff mark a line **Checked in** after it is received; the row stays on the shared sheet. The Parts process later takes it off the board with `DELETE /api/parts` (same Bearer token, that `id` — JSON body or `?id=`). An unauthenticated DELETE is rejected. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
 
 Shop-floor `PUT /api/parts` stays open, like the job board, so Ryan and Jesse can edit in a browser. The bot token is not put on the page (that would also unlock POST/DELETE). A save **merges by line**: a tablet that loaded an older list cannot wipe a row the Parts bot (or another browser) added after that page loaded.
 
