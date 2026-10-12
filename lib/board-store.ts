@@ -216,14 +216,24 @@ export function applySharedSnapshot(shared: SharedBoardDocument | SharedBoardPay
     },
     false,
   );
+  lastSyncedPayload = sharedPayloadKey();
   return true;
+}
+
+/** JSON of the last copy known to match the server; unchanged boards are not re-PUT. */
+let lastSyncedPayload: string | null = null;
+
+function sharedPayloadKey(): string {
+  return JSON.stringify(exportSharedPayload());
 }
 
 function scheduleSharedPush() {
   if (typeof window === "undefined" || !sharedHydrated || !sharedConfigured) return;
+  if (lastSyncedPayload !== null && sharedPayloadKey() === lastSyncedPayload) return;
   if (sharedPushTimer != null) window.clearTimeout(sharedPushTimer);
   sharedPushTimer = window.setTimeout(() => {
     sharedPushTimer = null;
+    if (lastSyncedPayload !== null && sharedPayloadKey() === lastSyncedPayload) return;
     void pushSharedBoard();
   }, 350);
 }
@@ -245,7 +255,9 @@ async function pushSharedBoard(migrate = false): Promise<SharedBoardDocument | n
       return null;
     }
     if (!response.ok || !body) return null;
-    return parseSharedBoardDocument(body);
+    const parsed = parseSharedBoardDocument(body);
+    if (parsed) lastSyncedPayload = sharedPayloadKey();
+    return parsed;
   } catch {
     return null;
   }

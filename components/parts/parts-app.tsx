@@ -53,12 +53,17 @@ export function PartsApp() {
   }, [refreshing]);
 
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void reloadSharedParts();
+    // Poll every 90s only while the tab is visible; a tab coming back into
+    // view refreshes at most once per 30s. (Was every 12s + every focus.)
+    let lastReload = Date.now();
+    const reload = (minGapMs: number) => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastReload < minGapMs) return;
+      lastReload = Date.now();
+      void reloadSharedParts();
     };
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") void reloadSharedParts();
-    }, 12_000);
+    const onVisible = () => reload(30_000);
+    const id = window.setInterval(() => reload(85_000), 90_000);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => {
