@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import {
   PART_CARRIERS,
@@ -111,6 +111,7 @@ export function PartsTable({ parts, onChange, onRemove }: PartsTableProps) {
                   label="Part description"
                   value={part.partDescription}
                   placeholder="Part"
+                  multiline
                   onCommit={(partDescription) => onChange(part.id, { partDescription })}
                 />
               </td>
@@ -163,8 +164,10 @@ export function PartsTable({ parts, onChange, onRemove }: PartsTableProps) {
 
 function ColumnLabel({ children }: { children: string }) {
   return (
-    <span className="inline-flex h-9 items-center px-2 text-xs font-semibold tracking-wide text-muted uppercase">
-      {children}
+    <span className="flex min-h-9 w-full items-center px-1.5">
+      <span className="min-w-0 whitespace-normal text-xs font-semibold leading-tight tracking-wide text-muted uppercase">
+        {children}
+      </span>
     </span>
   );
 }
@@ -174,27 +177,64 @@ function TextField({
   value,
   placeholder,
   className,
+  multiline = false,
   onCommit,
 }: {
   label: string;
   value: string;
   placeholder: string;
   className?: string;
+  multiline?: boolean;
   onCommit: (next: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
   const [seen, setSeen] = useState(value);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
 
   if (value !== seen) {
     setSeen(value);
     setDraft(value);
   }
 
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) return;
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+  }, [draft]);
+
   const commit = (raw: string) => {
     const next = raw.replace(/\s+/g, " ").trim();
     setDraft(next);
     if (next !== value) onCommit(next);
   };
+
+  if (multiline) {
+    return (
+      <textarea
+        ref={areaRef}
+        aria-label={label}
+        value={draft}
+        placeholder={placeholder}
+        rows={1}
+        autoComplete="off"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={(event) => commit(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit(event.currentTarget.value);
+            event.currentTarget.blur();
+          }
+        }}
+        className={cn(
+          "parts-description min-w-0 w-full rounded-sm border border-border bg-background px-2.5 py-2.5 text-base text-foreground",
+          className,
+        )}
+      />
+    );
+  }
 
   return (
     <input

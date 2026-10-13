@@ -233,14 +233,21 @@
   }
 
   .parts-sheet {
-    --parts-index-w: 2.75rem;
-    --parts-customer-w: 12rem;
-    --parts-job-w: 7rem;
-    --parts-part-w: 14rem;
+    --parts-index-w: 2.25rem;
+    --parts-customer-w: 13.5rem;
+    --parts-job-w: 5.5rem;
+    /* Widest content column so descriptions can wrap in place. */
+    --parts-part-w: 18rem;
+    --parts-vendor-w: 7.5rem;
+    --parts-status-w: 10.25rem;
+    --parts-tracking-w: 7.5rem;
+    --parts-date-w: 10.25rem;
+    --parts-note-w: 5.25rem;
+    --parts-min-w: 80rem;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    width: max(100%, 86rem);
+    width: max(100%, var(--parts-min-w));
   }
 
   .parts-col-index {
@@ -260,23 +267,34 @@
   }
 
   .parts-col-vendor {
-    width: 11%;
+    width: var(--parts-vendor-w);
   }
 
   .parts-col-status {
-    width: 13%;
+    width: var(--parts-status-w);
   }
 
   .parts-col-tracking {
-    width: 16%;
+    width: var(--parts-tracking-w);
   }
 
   .parts-col-date {
-    width: 12%;
+    width: var(--parts-date-w);
   }
 
   .parts-col-note {
-    width: 14%;
+    width: var(--parts-note-w);
+  }
+
+  .parts-description {
+    min-height: 2.75rem;
+    height: auto;
+    resize: none;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: break-word;
+    line-height: 1.35;
+    field-sizing: content;
   }
 
   .board-row-index {
@@ -351,15 +369,20 @@
 
     .parts-sheet {
       --parts-index-w: 2.25rem;
-      --parts-customer-w: 9rem;
-      --parts-job-w: 5.75rem;
-      --parts-part-w: 10rem;
+      --parts-customer-w: 9.5rem;
+      --parts-job-w: 5.25rem;
+      --parts-part-w: 16rem;
+      --parts-vendor-w: 6.5rem;
+      --parts-status-w: 9.75rem;
+      --parts-tracking-w: 7.25rem;
+      --parts-date-w: 10rem;
+      --parts-note-w: 5rem;
+      --parts-min-w: 71.5rem;
     }
   }
 
   @media (min-width: 1280px) {
-    .board-sheet,
-    .parts-sheet {
+    .board-sheet {
       width: 100%;
     }
   }
