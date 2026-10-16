@@ -158,6 +158,30 @@ describe("mergeHcpJobs", () => {
     assert.equal(jobs.some((job) => job.jobNumber === "1842"), true);
     assert.equal(jobs.some((job) => job.jobNumber === "1901"), true);
     assert.equal(jobs.find((job) => job.jobNumber === "1901")?.hcpScheduledStartAt, null);
+    assert.equal(jobs.find((job) => job.jobNumber === "1901")?.hcpWorkStartedAt, null);
+  });
+
+  it("stores work_timestamps.started_at and does not copy schedule or created_at", () => {
+    const clocked = Date.parse("2026-09-01T15:00:00Z");
+    const scheduled = Date.parse("2026-10-01T15:00:00Z");
+    const mapped = mapHcpJob({
+      id: "clk",
+      invoice_number: "173190",
+      work_status: "in progress",
+      created_at: "2026-08-01T15:00:00Z",
+      schedule: { scheduled_start: "2026-10-01T15:00:00Z" },
+      work_timestamps: { started_at: "2026-09-01T15:00:00Z" },
+      customer: { first_name: "Ada", last_name: "Lovelace" },
+    });
+    assert.ok(mapped);
+    const first = mergeHcpJobs([], [mapped]);
+    assert.equal(first.jobs[0].hcpWorkStartedAt, clocked);
+    assert.equal(first.jobs[0].hcpScheduledStartAt, scheduled);
+    assert.notEqual(first.jobs[0].hcpWorkStartedAt, first.jobs[0].createdAt);
+
+    const cleared = mergeHcpJobs(first.jobs, [{ ...mapped, workStartedAt: null }]);
+    assert.equal(cleared.jobs[0].hcpWorkStartedAt, null);
+    assert.equal(cleared.updated, 1);
   });
 
   it("stores HCP schedule.scheduled_start on new jobs and keeps it when later payloads omit schedule", () => {

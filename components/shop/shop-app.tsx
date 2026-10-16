@@ -23,6 +23,7 @@ import {
   updateJob,
 } from "@/lib/board-store";
 import { filterJobsByTimeframe } from "@/lib/filters";
+import { jobsOverSevenDaysStarted } from "@/lib/startedFilter";
 import { sortJobsByJobNumber } from "@/lib/sort";
 import {
   refreshHcpJobs,
@@ -165,7 +166,7 @@ export function ShopApp() {
   }, [draft, abandonBlankDraft]);
 
   const visible = useMemo(
-    () => sortJobsByJobNumber(filterJobsByTimeframe(board.jobs, timeframe)),
+    () => sortJobsByJobNumber(filterJobsByTimeframe(jobsOverSevenDaysStarted(board.jobs), timeframe)),
     [board.jobs, timeframe],
   );
   const timeframeLabel = formatTimeframe(timeframe);
@@ -270,6 +271,16 @@ export function ShopApp() {
                 >
                   Clear timeframe
                 </button>
+              </>
+            ) : board.jobs.length > 0 ? (
+              <>
+                <p className="font-display text-2xl font-semibold">
+                  No jobs clocked in more than 7 days ago
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  This list only shows open jobs whose Housecall Pro work start is more than 7
+                  days ago. Jobs with no clock-in stay hidden.
+                </p>
               </>
             ) : (
               <>

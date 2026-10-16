@@ -93,6 +93,14 @@ export function nextHcpScheduledStartAt(
   return null;
 }
 
+/** Clock-in from `work_timestamps.started_at` only. Absent or invalid stays null. */
+function nextHcpWorkStartedAt(incoming: number | null | undefined): number | null {
+  if (typeof incoming === "number" && Number.isFinite(incoming) && incoming > 0) {
+    return incoming;
+  }
+  return null;
+}
+
 function scheduleStartCleared(hcp: HcpOpenJob): boolean {
   if (typeof hcp.scheduledStart === "number" && Number.isFinite(hcp.scheduledStart) && hcp.scheduledStart > 0) {
     return false;
@@ -151,7 +159,9 @@ function indexByJobNumber(jobs: CartJob[]): Map<string, CartJob> {
  * "Neighborhood Golf Carts" get corrected). Empty HCP names are not invented
  * and do not keep a leftover shop name. Phone / pipeline status still update
  * from HCP. Date started comes from HCP `schedule.scheduled_start` when present
- * and is never invented from created_at. Unscheduled / needs scheduling always
+ * and is never invented from created_at. Clock-in (`hcpWorkStartedAt`) comes
+ * only from `work_timestamps.started_at` and is null when that field is absent.
+ * Unscheduled / needs scheduling always
  * stores null (even if leftover `scheduled_start` is still on the job).
  * Tech-entered next action and Timeframe stay only on jobs that
  * remain in the open pull. Finished/canceled HCP jobs drop off the board.
@@ -200,6 +210,7 @@ export function mergeHcpJobs(
           null,
           shouldClearScheduledStart(hcp, draft.status),
         ),
+        hcpWorkStartedAt: nextHcpWorkStartedAt(hcp.workStartedAt),
         updatedAt: now,
         statusChangedAt: now,
       });
@@ -219,14 +230,17 @@ export function mergeHcpJobs(
       existing.hcpScheduledStartAt,
       shouldClearScheduledStart(hcp, nextStatus),
     );
+    const nextWorkStarted = nextHcpWorkStartedAt(hcp.workStartedAt);
     if (!statusChanged && !customerChanged && !phoneChanged) {
       const startChanged = nextStart !== (existing.hcpScheduledStartAt ?? null);
+      const workChanged = nextWorkStarted !== (existing.hcpWorkStartedAt ?? null);
       merged.push({
         ...existing,
         hcpScheduledStartAt: nextStart,
+        hcpWorkStartedAt: nextWorkStarted,
         statusChangedAt: saneStatusChangedAt(existing, now),
       });
-      if (startChanged) updated += 1;
+      if (startChanged || workChanged) updated += 1;
       continue;
     }
 
@@ -248,6 +262,7 @@ export function mergeHcpJobs(
       status: nextStatus,
       history,
       hcpScheduledStartAt: nextStart,
+      hcpWorkStartedAt: nextWorkStarted,
       statusChangedAt: statusChanged ? now : saneStatusChangedAt(existing, now),
       updatedAt: now,
     });

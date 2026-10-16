@@ -60,6 +60,10 @@ Live `GET /jobs?page=&page_size=` includes `schedule` on each Job — no `expand
 
 **Expected dash (local seeds, not HCP):** Mike Landry / `1842` / In Progress and The Landing HOA / `1839` are `seed-1842` / `seed-1839` in `lib/jobs.ts`. They are first-load demo rows (`hcpScheduledStartAt: null`). Live open HCP jobs do not include `1842` or `1839` (current NGC invoices are 6-digit, plus older real jobs like `645`). Sync keeps those local-only seeds and does **not** invent a Date started from `created_at`. `—` on those rows is correct.
 
+## Main board list
+
+The shop board at `/` shows only open jobs whose Housecall Pro clock-in, `work_timestamps.started_at`, is more than 7 days ago. Sync stores that instant as `hcpWorkStartedAt` and leaves it null when the field is missing. Schedule start, `created_at`, and the board’s `createdAt` are not used for this filter, so a job with no clock-in is hidden. `/parts`, `/wall`, and the board APIs still return the full list.
+
 ## Primary tech
 
 Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team & Permissions). Office Staff and other roles are not included.

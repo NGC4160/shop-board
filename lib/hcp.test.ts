@@ -10,6 +10,7 @@ import {
   isOpenHcpWorkStatus,
   jobNumberFromHcp,
   scheduledStartFromHcp,
+  workStartedAtFromHcp,
   hcpJobHasSchedule,
   mapHcpJob,
 } from "./hcp.ts";
@@ -224,6 +225,38 @@ describe("scheduledStartFromHcp", () => {
     assert.equal(hcpJobHasSchedule(raw), true);
     assert.equal(mapHcpJob(raw)?.scheduledStart, null);
     assert.equal(mapHcpJob(raw)?.schedulePresent, true);
+  });
+});
+
+describe("workStartedAtFromHcp", () => {
+  it("reads only work_timestamps.started_at and does not invent a clock-in", () => {
+    const iso = "2026-03-01T15:30:00Z";
+    assert.equal(
+      workStartedAtFromHcp({ work_timestamps: { started_at: iso } }),
+      Date.parse(iso),
+    );
+    assert.equal(workStartedAtFromHcp({ work_timestamps: { started_at: null } }), null);
+    assert.equal(workStartedAtFromHcp({ work_timestamps: {} }), null);
+    assert.equal(workStartedAtFromHcp({}), null);
+    assert.equal(workStartedAtFromHcp(null), null);
+    assert.equal(
+      workStartedAtFromHcp({
+        created_at: iso,
+        updated_at: iso,
+        schedule: { scheduled_start: iso },
+        work_timestamps: { on_my_way_at: iso, completed_at: iso },
+      }),
+      null,
+    );
+    const raw = {
+      invoice_number: "173190",
+      work_status: "in progress",
+      work_timestamps: { started_at: iso, on_my_way_at: null, completed_at: null },
+      schedule: { scheduled_start: "2026-10-01T15:00:00Z" },
+    };
+    assert.equal(mapHcpJob(raw)?.workStartedAt, Date.parse(iso));
+    assert.equal(mapHcpJob(raw)?.scheduledStart, Date.parse("2026-10-01T15:00:00Z"));
+    assert.equal(mapHcpJob({ invoice_number: "173191", work_status: "scheduled" })?.workStartedAt, null);
   });
 });
 
