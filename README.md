@@ -107,6 +107,8 @@ v2 used to store the working copy only in the browser (`localStorage` key `ngc-s
 
 Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handler only runs the Housecall Pro pull when the clock is **7:00 AM in America/Chicago**, so daylight saving does not drift the shop’s 7am refresh.
 
+Housecall Pro list calls retry on HTTP 429, 5xx, and network errors with exponential backoff and jitter (up to 4 attempts). A `Retry-After` header sets the wait. Other 4xx responses are not retried.
+
 Each shop tablet/TV then merges that job list into the **shared** board:
 
 - On load, the client GETs `/api/board` (the shared store) and applies that snapshot. Morning HCP sync and **Sync** / pull-to-refresh then fetch `/api/jobs/hcp` and **merge by job number** on top of it.
