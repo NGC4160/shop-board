@@ -121,6 +121,7 @@ describe("validatePartsPut", () => {
   it("does not apply a malformed parts PUT", () => {
     const current = {
       version: 1 as const,
+      revision: 1,
       updatedAt: 1,
       parts: [SAMPLE_PART_LINE],
     };

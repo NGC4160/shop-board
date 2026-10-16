@@ -23,6 +23,7 @@ import {
   undoDeletePart,
   updatePart,
 } from "@/lib/parts-store";
+import { subscribeWriteConflict } from "@/lib/write-conflict";
 import { BoardNav } from "@/components/shop/board-nav";
 import { PartsTable } from "@/components/parts/parts-table";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
@@ -41,6 +42,13 @@ export function PartsApp() {
   const [search, setSearch] = useState("");
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
+
+  useEffect(() => {
+    return subscribeWriteConflict((notice) => {
+      if (notice.board !== "parts") return;
+      toast.error(notice.message);
+    });
+  }, []);
 
   const runReload = useCallback(async () => {
     if (refreshing) return;
