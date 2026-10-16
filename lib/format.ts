@@ -64,6 +64,39 @@ export function displayStartedDate(
   return formatStartedDate(ms);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function clockInMillis(ms: number | null | undefined): number | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return null;
+  return ms;
+}
+
+/**
+ * Whole elapsed days since a timestamp. A future clock-in is 0.
+ * Missing or non-positive timestamps are null.
+ */
+export function wholeDaysSince(ms: number | null | undefined, now = Date.now()): number | null {
+  const at = clockInMillis(ms);
+  if (at == null) return null;
+  return Math.max(0, Math.floor((now - at) / DAY_MS));
+}
+
+/**
+ * Main-board Days column. Whole days since the first Housecall Pro clock-in
+ * (`hcpWorkStartedAt`). When that field is null, count from the previous
+ * Date started value (`hcpScheduledStartAt`) instead.
+ */
+export function displayDaysSinceStarted(
+  hcpWorkStartedAt: number | null | undefined,
+  hcpScheduledStartAt: number | null | undefined,
+  now = Date.now(),
+): string {
+  const source = hcpWorkStartedAt == null ? hcpScheduledStartAt : hcpWorkStartedAt;
+  const days = wholeDaysSince(source, now);
+  if (days == null) return "—";
+  return String(days);
+}
+
 export function agingLabel(days: number): string {
   if (!Number.isFinite(days) || days <= 0 || days > 365) return "today";
   if (days === 1) return "1d in stage";
