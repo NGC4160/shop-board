@@ -4,13 +4,13 @@ import { isChicagoSevenAmHour } from "@/lib/chicago";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
+const HCP_FETCH_RETRY_MS = 2000;
+
 function isAuthorizedCron(request: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim();
   if (secret) {
     return request.headers.get("authorization") === `Bearer ${secret}`;
   }
-  const ua = request.headers.get("user-agent") ?? "";
-  if (ua.includes("vercel-cron")) return true;
   return process.env.NODE_ENV !== "production";
 }
 
@@ -33,7 +33,11 @@ export async function GET(request: Request) {
     });
   }
 
-  const result = await fetchHcpOpenJobs();
+  let result = await fetchHcpOpenJobs();
+  if (!result.ok) {
+    await new Promise((resolve) => setTimeout(resolve, HCP_FETCH_RETRY_MS));
+    result = await fetchHcpOpenJobs();
+  }
   if (!result.ok) {
     console.error("HCP morning sync failed", result.error);
     return Response.json(result, { status: 502 });
