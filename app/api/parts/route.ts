@@ -1,5 +1,6 @@
 import { authorizePartsWrite, isPartsWriteConfigured } from "@/lib/parts-auth";
 import { removePartLine, upsertPartLine } from "@/lib/parts";
+import { validatePartUpsertFields } from "@/lib/validate-parts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
@@ -159,6 +160,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    const fieldError = validatePartUpsertFields(body);
+    if (fieldError) return json({ ok: false, error: fieldError }, 400);
     const current = (await readSharedParts()) ?? emptySharedPartsDocument();
     const result = upsertPartLine(current.parts, body);
     if (!result.ok) return json({ ok: false, error: result.error }, 400);

@@ -1,7 +1,7 @@
 import {
-  parseSharedBoardDocument,
   toSharedBoardDocument,
 } from "@/lib/shared-board";
+import { validateBoardPut } from "@/lib/validate-board";
 import {
   isSharedStoreConfigured,
   readSharedBoard,
@@ -59,14 +59,14 @@ export async function PUT(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  const parsed = parseSharedBoardDocument(body);
-  if (!parsed) return json({ ok: false, error: "Board payload was not an object" }, 400);
+  const validated = validateBoardPut(body);
+  if (!validated.ok) return json({ ok: false, error: validated.error }, 400);
 
   const migrate =
     Boolean(body) &&
     typeof body === "object" &&
     (body as { migrate?: unknown }).migrate === true;
-  const next = toSharedBoardDocument(parsed, Date.now());
+  const next = toSharedBoardDocument(validated.value, Date.now());
 
   try {
     if (migrate) {

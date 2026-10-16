@@ -1,4 +1,5 @@
 import { sanitizeLoadedParts, type PartLine } from "@/lib/parts";
+import { validatePartsPut } from "@/lib/validate-parts";
 
 export const SHARED_PARTS_VERSION = 1;
 
@@ -108,10 +109,10 @@ export function applyIncomingPartsPut(
   body: unknown,
   now = Date.now(),
 ): { ok: true; doc: SharedPartsDocument } | { ok: false; error: string } {
-  const parsed = parseSharedPartsDocument(body);
-  if (!parsed) return { ok: false, error: "Parts payload was not an object" };
+  const validated = validatePartsPut(body);
+  if (!validated.ok) return { ok: false, error: validated.error };
   const basedOn = readPartsWriteBaseUpdatedAt(body);
   const base = current ?? emptySharedPartsDocument(0);
-  const merged = mergeSharedPartsDocuments(base, parsed, basedOn);
+  const merged = mergeSharedPartsDocuments(base, { parts: validated.value }, basedOn);
   return { ok: true, doc: toSharedPartsDocument(merged, now) };
 }
