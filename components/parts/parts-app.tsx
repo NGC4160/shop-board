@@ -10,6 +10,7 @@ import {
   partDescriptionError,
   sortParts,
   filterParts,
+  isDeletedPart,
   type PartLine,
 } from "@/lib/parts";
 import {
@@ -23,6 +24,7 @@ import {
   undoDeletePart,
   updatePart,
 } from "@/lib/parts-store";
+import { subscribeWriteConflict } from "@/lib/write-conflict";
 import { BoardNav } from "@/components/shop/board-nav";
 import { PartsTable } from "@/components/parts/parts-table";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
@@ -41,6 +43,13 @@ export function PartsApp() {
   const [search, setSearch] = useState("");
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
+
+  useEffect(() => {
+    return subscribeWriteConflict((notice) => {
+      if (notice.board !== "parts") return;
+      toast.error(notice.message);
+    });
+  }, []);
 
   const runReload = useCallback(async () => {
     if (refreshing) return;
@@ -109,6 +118,7 @@ export function PartsApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [startDraft, draft, pendingRemove]);
 
+  const activeCount = board.parts.filter((part) => !isDeletedPart(part)).length;
   const visible = useMemo(
     () => sortParts(filterParts(board.parts, { status: statusFilter, search })),
     [board.parts, statusFilter, search],
@@ -134,7 +144,7 @@ export function PartsApp() {
       ? "Release to refresh"
       : pull > 16
         ? "Pull to refresh"
-        : `${board.parts.length} part${board.parts.length === 1 ? "" : "s"}`;
+        : `${activeCount} part${activeCount === 1 ? "" : "s"}`;
 
   return (
     <div className="shop-shell flex min-w-0 flex-col bg-background text-foreground">

@@ -6,12 +6,19 @@ import {
   sanitizeLoadedParts,
   type PartLine,
 } from "@/lib/parts";
+import { stableStringify, threeWayMergeById } from "@/lib/document-merge";
 import {
   emptySharedPartsDocument,
   parseSharedPartsDocument,
   type SharedPartsDocument,
   type SharedPartsPayload,
 } from "@/lib/parts-board";
+import {
+  PARTS_GAVE_UP_MESSAGE,
+  PARTS_MERGED_MESSAGE,
+  PARTS_REFRESHED_MESSAGE,
+  notifyWriteConflict,
+} from "@/lib/write-conflict";
 
 export type PartsSnapshot = {
   parts: PartLine[];
@@ -34,6 +41,10 @@ let sharedPushTimer: number | null = null;
 let dirty = false;
 /** Last server document `updatedAt` this page applied. Sent on PUT for merge. */
 let acknowledgedUpdatedAt: number | null = null;
+/** Last server document revision this page applied. Sent as If-Match / baseRevision. */
+let acknowledgedRevision = 0;
+/** Parts array at that revision, used to merge a 409 instead of writing over it. */
+let baseParts: PartLine[] = [];
 let sharedReadyResolve: (() => void) | null = null;
 const sharedReady = new Promise<void>((resolve) => {
   sharedReadyResolve = resolve;
@@ -86,8 +97,18 @@ export function getServerPartsSnapshot(): PartsSnapshot {
   return serverSnapshot;
 }
 
-export function exportSharedPartsPayload(): SharedPartsPayload {
-  return { parts: snapshot.parts, updatedAt: acknowledgedUpdatedAt };
+export function exportSharedPartsPayload(): SharedPartsPayload & { baseRevision: number } {
+  return {
+    parts: snapshot.parts,
+    updatedAt: acknowledgedUpdatedAt,
+    baseRevision: acknowledgedRevision,
+  };
+}
+
+function rememberServerParts(parts: PartLine[], revision: number, updatedAt: number) {
+  baseParts = parts;
+  acknowledgedRevision = revision;
+  acknowledgedUpdatedAt = updatedAt;
 }
 
 export function applySharedPartsSnapshot(shared: SharedPartsDocument | SharedPartsPayload) {
@@ -97,7 +118,7 @@ export function applySharedPartsSnapshot(shared: SharedPartsDocument | SharedPar
     parts: parsed.parts,
     updatedAt: parsed.updatedAt,
   };
-  acknowledgedUpdatedAt = parsed.updatedAt;
+  rememberServerParts(parsed.parts, parsed.revision, parsed.updatedAt);
   dirty = false;
   emit();
   return true;
@@ -124,28 +145,65 @@ function commit(next: PartsSnapshot, remember = false) {
   emit();
 }
 
-async function pushSharedParts(): Promise<SharedPartsDocument | null> {
+async function pushSharedParts(attempt = 0): Promise<SharedPartsDocument | null> {
   if (!getWindow() || !sharedConfigured || !dirty) return null;
+  const baseRevision = acknowledgedRevision;
+  const localParts = snapshot.parts;
+  const base = baseParts;
   try {
     const response = await fetch("/api/parts", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": String(baseRevision),
+      },
       cache: "no-store",
       body: JSON.stringify(exportSharedPartsPayload()),
     });
     const body = (await response.json().catch(() => null)) as
-      | (SharedPartsDocument & { configured?: boolean })
+      | (SharedPartsDocument & { configured?: boolean; error?: string; conflict?: boolean })
       | null;
     if (body?.configured === false) {
       sharedConfigured = false;
       return null;
     }
-    if (!response.ok || !body) return null;
+    if (response.status === 409 && body) {
+      const server = parseSharedPartsDocument(body);
+      if (!server) {
+        notifyWriteConflict({ board: "parts", message: PARTS_GAVE_UP_MESSAGE });
+        return null;
+      }
+      const merged = threeWayMergeById(base, localParts, server.parts);
+      const changed = stableStringify(merged.items) !== stableStringify(server.parts);
+      rememberServerParts(server.parts, server.revision, server.updatedAt);
+      snapshot = {
+        parts: changed ? merged.items : server.parts,
+        updatedAt: server.updatedAt,
+      };
+      emit();
+      if (!changed) {
+        dirty = false;
+        notifyWriteConflict({ board: "parts", message: PARTS_REFRESHED_MESSAGE });
+        return server;
+      }
+      dirty = true;
+      if (attempt >= 1) {
+        notifyWriteConflict({ board: "parts", message: PARTS_GAVE_UP_MESSAGE });
+        return server;
+      }
+      notifyWriteConflict({ board: "parts", message: PARTS_MERGED_MESSAGE });
+      return pushSharedParts(attempt + 1);
+    }
+    if (!response.ok || !body) {
+      if (body?.error) notifyWriteConflict({ board: "parts", message: body.error });
+      return null;
+    }
     const parsed = parseSharedPartsDocument(body);
     if (parsed) {
       snapshot = { parts: parsed.parts, updatedAt: parsed.updatedAt };
-      acknowledgedUpdatedAt = parsed.updatedAt;
+      rememberServerParts(parsed.parts, parsed.revision, parsed.updatedAt);
       dirty = false;
+      emit();
     }
     return parsed;
   } catch {
@@ -230,6 +288,8 @@ export function resetPartsStoreForTests() {
   sharedPushTimer = null;
   snapshot = { parts: [], updatedAt: null };
   acknowledgedUpdatedAt = null;
+  acknowledgedRevision = 0;
+  baseParts = [];
   dirty = false;
   sharedConfigured = true;
   sharedHydrated = false;
@@ -269,11 +329,15 @@ export function updatePart(id: string, patch: Partial<PartLine>): boolean {
 }
 
 export function deletePart(id: string): boolean {
-  if (!snapshot.parts.some((item) => item.id === id)) return false;
+  const current = snapshot.parts.find((item) => item.id === id);
+  if (!current || current.deletedAt) return false;
+  const now = Date.now();
   commit(
     {
-      parts: snapshot.parts.filter((item) => item.id !== id),
-      updatedAt: Date.now(),
+      parts: snapshot.parts.map((item) =>
+        item.id === id ? { ...item, deletedAt: now, updatedAt: now } : item,
+      ),
+      updatedAt: now,
     },
     true,
   );

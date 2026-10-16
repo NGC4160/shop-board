@@ -1,5 +1,7 @@
 import { authorizePartsWrite, isPartsWriteConfigured } from "@/lib/parts-auth";
 import { removePartLine, upsertPartLine } from "@/lib/parts";
+import { STALE_REVISION_ERROR, resolveBaseRevision } from "@/lib/revision";
+import { validatePartUpsertFields } from "@/lib/validate-parts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
@@ -7,8 +9,8 @@ import {
 } from "@/lib/parts-board";
 import {
   isPartsStoreConfigured,
+  mutateSharedParts,
   readSharedParts,
-  writeSharedParts,
 } from "@/lib/parts-board-backend";
 
 export const dynamic = "force-dynamic";
@@ -114,17 +116,38 @@ export async function PUT(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
+  const base = resolveBaseRevision(body, request.headers.get("if-match"));
+  if (!base.ok) return json({ ok: false, error: base.error }, 400);
+
   try {
-    const current = await readSharedParts();
-    const result = applyIncomingPartsPut(current, body);
-    if (!result.ok) return json({ ok: false, error: result.error }, 400);
-    const next = result.doc;
-    await writeSharedParts(next);
+    const decision = await mutateSharedParts((current) => {
+      const result = applyIncomingPartsPut(current, body, Date.now(), base.revision);
+      if (!result.ok && result.conflict) return { type: "conflict" as const, current: result.current };
+      if (!result.ok) return { type: "error" as const, status: 400, error: result.error };
+      return { type: "write" as const, doc: result.doc };
+    });
+    if (decision.type === "conflict") {
+      const current = decision.current ?? emptySharedPartsDocument(0, 0);
+      return json(
+        {
+          ok: false,
+          conflict: true,
+          error: STALE_REVISION_ERROR,
+          ...current,
+        },
+        409,
+      );
+    }
+    if (decision.type === "error") return json({ ok: false, error: decision.error }, decision.status);
+    if (decision.type !== "write" && decision.type !== "keep") {
+      return json({ ok: false, error: "Shared parts store could not be written" }, 502);
+    }
+    const next = decision.doc;
     return json({
       ok: true,
       empty: next.parts.length === 0,
       configured: true,
-      wrote: true,
+      wrote: decision.type === "write",
       ...next,
     });
   } catch (error) {
@@ -159,18 +182,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    const current = (await readSharedParts()) ?? emptySharedPartsDocument();
-    const result = upsertPartLine(current.parts, body);
-    if (!result.ok) return json({ ok: false, error: result.error }, 400);
-    const next = toSharedPartsDocument({ parts: result.parts }, Date.now());
-    await writeSharedParts(next);
+    const fieldError = validatePartUpsertFields(body);
+    if (fieldError) return json({ ok: false, error: fieldError }, 400);
+    const decision = await mutateSharedParts((current) => {
+      const base = current ?? emptySharedPartsDocument(0, 0);
+      const result = upsertPartLine(base.parts, body);
+      if (!result.ok) return { type: "error" as const, status: 400, error: result.error };
+      return {
+        type: "write" as const,
+        doc: toSharedPartsDocument({ parts: result.parts }, Date.now(), base.revision + 1),
+        upserted: result.line,
+      };
+    });
+    if (decision.type === "error") return json({ ok: false, error: decision.error }, decision.status);
+    if (decision.type !== "write") {
+      return json({ ok: false, error: "Shared parts store could not be written" }, 502);
+    }
     return json({
       ok: true,
-      empty: next.parts.length === 0,
+      empty: decision.doc.parts.length === 0,
       configured: true,
       wrote: true,
-      upserted: result.line,
-      ...next,
+      upserted: decision.upserted,
+      ...decision.doc,
     });
   } catch (error) {
     console.error("Parts upsert failed", error);
@@ -200,20 +234,33 @@ export async function DELETE(request: Request) {
   if (!target.ok) return target.response;
 
   try {
-    const current = (await readSharedParts()) ?? emptySharedPartsDocument();
-    const result = removePartLine(current.parts, target.incoming);
-    if (!result.ok) {
-      return json({ ok: false, error: result.error }, result.missing ? 404 : 400);
+    const decision = await mutateSharedParts((current) => {
+      const base = current ?? emptySharedPartsDocument(0, 0);
+      const result = removePartLine(base.parts, target.incoming);
+      if (!result.ok) {
+        return {
+          type: "error" as const,
+          status: result.missing ? 404 : 400,
+          error: result.error,
+        };
+      }
+      return {
+        type: "write" as const,
+        doc: toSharedPartsDocument({ parts: result.parts }, Date.now(), base.revision + 1),
+        removed: result.removed,
+      };
+    });
+    if (decision.type === "error") return json({ ok: false, error: decision.error }, decision.status);
+    if (decision.type !== "write") {
+      return json({ ok: false, error: "Shared parts store could not be written" }, 502);
     }
-    const next = toSharedPartsDocument({ parts: result.parts }, Date.now());
-    await writeSharedParts(next);
     return json({
       ok: true,
-      empty: next.parts.length === 0,
+      empty: decision.doc.parts.length === 0,
       configured: true,
       wrote: true,
-      removed: result.removed,
-      ...next,
+      removed: decision.removed,
+      ...decision.doc,
     });
   } catch (error) {
     console.error("Parts delete failed", error);

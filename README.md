@@ -107,6 +107,8 @@ v2 used to store the working copy only in the browser (`localStorage` key `ngc-s
 
 Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handler only runs the Housecall Pro pull when the clock is **7:00 AM in America/Chicago**, so daylight saving does not drift the shop’s 7am refresh.
 
+Housecall Pro list calls retry on HTTP 429, 5xx, and network errors with exponential backoff and jitter (up to 4 attempts). A `Retry-After` header sets the wait. Other 4xx responses are not retried.
+
 Each shop tablet/TV then merges that job list into the **shared** board:
 
 - On load, the client GETs `/api/board` (the shared store) and applies that snapshot. Morning HCP sync and **Sync** / pull-to-refresh then fetch `/api/jobs/hcp` and **merge by job number** on top of it.
@@ -122,7 +124,7 @@ Each shop tablet/TV then merges that job list into the **shared** board:
 There is no Housecall Pro write from this app (the API key is treated as read-only). Delete is **board-only**:
 
 1. Tap the trash icon on the customer cell (44px target). Confirm **Remove**.
-2. The row leaves the shared store (and this device’s `localStorage` cache). Undo is offered on the toast.
+2. The row is hidden. It stays in the shared document with `deletedAt` (and in this device’s `localStorage` cache). Undo on the toast clears that timestamp.
 3. That job number is remembered as dismissed on the shared store, so the next morning sync or pull-to-refresh will not put it back on any device.
 4. Press `N` and add the same job # locally if you need the row again (that clears the dismissal).
 
@@ -139,7 +141,25 @@ Load order:
 3. If the store is empty and this browser already had a v6/v5 board, upload that snapshot **once** (`migrate: true`). The server ignores a second migrate so two devices cannot wipe each other. Do not open a brand-new browser first after deploy if a phone/computer already has the real board — the first existing device should load once to seed the store.
 4. Morning HCP sync, **Sync**, and pull-to-refresh then merge `/api/jobs/hcp` on top. HCP does not overwrite next step / Timeframe / notes. Sync also re-GETs `/api/board` first so the other device’s board-only edits show up without a full reload.
 
-Edits debounce ~350ms into `PUT /api/board` (last write wins). `localStorage` remains a cache, not the only persistence path.
+Edits debounce ~350ms into `PUT /api/board`. Each save sends the revision the tablet loaded (`If-Match` and `baseRevision`). If another device saved first, the server returns **409** with the current document. The tablet merges its edits into that copy, shows a toast, and saves once against the new revision. It does not write the stale snapshot again. `localStorage` remains a cache, not the only persistence path.
+
+`version` on the document is the schema number (still `1`). `revision` is the monotonic copy number. A blob saved before revisions exists is treated as revision **0**; the next successful save stores revision **1**. No manual migration is required. Open tablets should be refreshed after deploy so they send a revision.
+
+Removing a job sets `deletedAt` and hides the row (it also stays dismissed, so morning sync will not put it back). The row stays in the document. Undo clears `deletedAt`. The same tombstone is used for parts lines and for Housecall Pro jobs that leave the open pull.
+
+### Backups and restore
+
+Before every save or delete that changes a document, the previous JSON is copied to a timestamped object in the same Blob store (local `next dev` uses `.data/backups/`). Copies are capped at 40 per board, and anything older than 30 days is deleted after the newest 5 are kept.
+
+List and restore locally:
+
+```bash
+npx tsx scripts/restore-board-backup.ts --list --store board
+npx tsx scripts/restore-board-backup.ts --store board --backup backups/ngc-shop-board/<file>.json
+npx tsx scripts/restore-board-backup.ts --store parts --backup backups/ngc-parts-board/<file>.json
+```
+
+That copies the backup onto `.data/ngc-shop-board.json` or `.data/ngc-parts-board.json`. With `BLOB_READ_WRITE_TOKEN` set, the same script replaces the live blob and requires `--yes`. Do that only when you mean to replace production. Refresh open tablets afterward so they load the restored revision. There is no public restore URL.
 
 ### How to test
 
@@ -176,7 +196,7 @@ curl -X POST https://ngc-shop-board.vercel.app/api/parts \
   }'
 ```
 
-`GET /api/parts` is open, same as `GET /api/board`. An open `/parts` page refreshes about every 12 seconds and **only reads** — it does not write unless someone on the floor actually edits a line. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line (omitted fields stay). Shop-floor staff mark a line **Checked in** after it is received; the row stays on the shared sheet. The Parts process later takes it off the board with `DELETE /api/parts` (same Bearer token, that `id` — JSON body or `?id=`). An unauthenticated DELETE is rejected. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
+`GET /api/parts` is open, same as `GET /api/board`. An open `/parts` page refreshes about every 12 seconds and **only reads** — it does not write unless someone on the floor actually edits a line. `POST /api/parts` is token-gated (`PARTS_WRITE_TOKEN`). Re-POST the same `id` to update that line (omitted fields stay). Shop-floor staff mark a line **Checked in** after it is received; the row stays on the shared sheet. The Parts process later hides it with `DELETE /api/parts` (same Bearer token, that `id` — JSON body or `?id=`). The line stays in the document with `deletedAt` and disappears from the sheet. POST the same `id` again to bring it back. An unauthenticated DELETE is rejected. Set the token on the existing **ngc-shop-board** Vercel project (Production + Preview) — do not commit it.
 
 Shop-floor `PUT /api/parts` stays open, like the job board, so Ryan and Jesse can edit in a browser. The bot token is not put on the page (that would also unlock POST/DELETE). A save **merges by line**: a tablet that loaded an older list cannot wipe a row the Parts bot (or another browser) added after that page loaded.
 
@@ -198,7 +218,7 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
 | `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
 | `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
-| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id`. `DELETE /api/parts` removes one line by that same `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (open, same as jobs — not this token) and write a **separate** Blob file (`ngc-parts-board.json`). A stale PUT merges by line instead of replacing the whole list. |
+| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id` (and clears `deletedAt` if that line was hidden). `DELETE /api/parts` soft-deletes one line by that same `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (open, same as jobs — not this token) and must send the document `revision`. A stale PUT gets **409** instead of replacing the list. |
 
 Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
 
@@ -223,6 +243,8 @@ Open [http://localhost:3000](http://localhost:3000). Parts board: [http://localh
 npm run build
 npm start
 ```
+
+Pull requests and pushes to `main` run `.github/workflows/ci.yml`: `npm ci`, lint, `tsc --noEmit`, unit tests, and `next build`.
 
 ## Deploy
 

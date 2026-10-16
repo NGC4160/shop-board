@@ -1,9 +1,13 @@
 import { sanitizeLoadedParts, type PartLine } from "@/lib/parts";
+import { isStaleRevision, readStoredRevision, STALE_REVISION_ERROR } from "@/lib/revision";
+import { validatePartsPut } from "@/lib/validate-parts";
 
 export const SHARED_PARTS_VERSION = 1;
 
 export type SharedPartsDocument = {
   version: typeof SHARED_PARTS_VERSION;
+  /** Monotonic per-document revision. Not the schema `version`. Legacy blobs are 0. */
+  revision: number;
   updatedAt: number;
   parts: PartLine[];
 };
@@ -29,6 +33,7 @@ export function parseSharedPartsDocument(value: unknown): SharedPartsDocument | 
       : Date.now();
   return {
     version: SHARED_PARTS_VERSION,
+    revision: readStoredRevision(record),
     updatedAt,
     parts,
   };
@@ -37,17 +42,20 @@ export function parseSharedPartsDocument(value: unknown): SharedPartsDocument | 
 export function toSharedPartsDocument(
   payload: SharedPartsPayload,
   updatedAt = Date.now(),
+  revision = 0,
 ): SharedPartsDocument {
   return {
     version: SHARED_PARTS_VERSION,
+    revision,
     updatedAt,
     parts: sanitizeLoadedParts(payload.parts),
   };
 }
 
-export function emptySharedPartsDocument(updatedAt = Date.now()): SharedPartsDocument {
+export function emptySharedPartsDocument(updatedAt = Date.now(), revision = 0): SharedPartsDocument {
   return {
     version: SHARED_PARTS_VERSION,
+    revision,
     updatedAt,
     parts: [],
   };
@@ -107,11 +115,25 @@ export function applyIncomingPartsPut(
   current: SharedPartsDocument | null,
   body: unknown,
   now = Date.now(),
-): { ok: true; doc: SharedPartsDocument } | { ok: false; error: string } {
-  const parsed = parseSharedPartsDocument(body);
-  if (!parsed) return { ok: false, error: "Parts payload was not an object" };
-  const basedOn = readPartsWriteBaseUpdatedAt(body);
-  const base = current ?? emptySharedPartsDocument(0);
-  const merged = mergeSharedPartsDocuments(base, parsed, basedOn);
-  return { ok: true, doc: toSharedPartsDocument(merged, now) };
+  baseRevision?: number,
+):
+  | { ok: true; doc: SharedPartsDocument }
+  | { ok: false; conflict?: false; error: string }
+  | { ok: false; conflict: true; error: string; current: SharedPartsDocument | null } {
+  const validated = validatePartsPut(body);
+  if (!validated.ok) return { ok: false, error: validated.error };
+  if (baseRevision == null) {
+    return {
+      ok: false,
+      error: "Send the revision you loaded as the If-Match header or baseRevision, then try again.",
+    };
+  }
+  const currentRevision = current?.revision ?? 0;
+  if (isStaleRevision(currentRevision, baseRevision)) {
+    return { ok: false, conflict: true, error: STALE_REVISION_ERROR, current };
+  }
+  return {
+    ok: true,
+    doc: toSharedPartsDocument({ parts: validated.value }, now, currentRevision + 1),
+  };
 }

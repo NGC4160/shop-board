@@ -12,7 +12,7 @@ import {
   STALE_HCP_COMPANY_CUSTOMER,
 } from "./hcp-merge.ts";
 import { mapHcpJob } from "./hcp.ts";
-import { seedJobs, upgradeJob } from "./jobs.ts";
+import { seedJobs, upgradeJob, visibleJobs } from "./jobs.ts";
 
 describe("mapHcpJob", () => {
   it("maps invoice number, customer, and open work status", () => {
@@ -643,14 +643,16 @@ describe("mergeHcpJobs", () => {
     assert.equal(updated, 0);
     assert.equal(removed, 2);
     assert.deepEqual(
-      jobs.map((job) => job.jobNumber).sort(),
+      visibleJobs(jobs).map((job) => job.jobNumber).sort(),
       ["17428", "19992"],
     );
     const keptOpen = jobs.find((job) => job.jobNumber === "17428");
     assert.equal(keptOpen?.nextAction, "Call when parts come in");
     assert.equal(keptOpen?.timeExpectation, "2026-09-18");
-    assert.equal(jobs.some((job) => job.jobNumber === "17429"), false);
-    assert.equal(jobs.some((job) => job.jobNumber === "17447"), false);
+    assert.equal(visibleJobs(jobs).some((job) => job.jobNumber === "17429"), false);
+    assert.equal(visibleJobs(jobs).some((job) => job.jobNumber === "17447"), false);
+    assert.ok(jobs.find((job) => job.jobNumber === "17429")?.deletedAt);
+    assert.ok(jobs.find((job) => job.jobNumber === "17447")?.deletedAt);
   });
 
   it("clears a leftover shop customer name when HCP sends an empty one", () => {

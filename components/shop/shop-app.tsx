@@ -9,6 +9,7 @@ import {
   isBlankIdentity,
   jobNumberError,
   normalizeJobNumber,
+  visibleJobs,
   type CartJob,
 } from "@/lib/jobs";
 import {
@@ -35,6 +36,7 @@ import { BoardNav } from "@/components/shop/board-nav";
 import { HcpSyncButton } from "@/components/shop/hcp-sync-button";
 import { TimeframeFilter } from "@/components/shop/timeframe-filter";
 import { RemoveConfirm } from "@/components/shop/remove-confirm";
+import { subscribeWriteConflict } from "@/lib/write-conflict";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
 import { useMobileViewportRestore } from "@/components/shop/use-mobile-viewport";
 
@@ -52,6 +54,13 @@ export function ShopApp() {
   const timeframe = board.prefs.timeframe ?? "";
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
+
+  useEffect(() => {
+    return subscribeWriteConflict((notice) => {
+      if (notice.board !== "jobs") return;
+      toast.error(notice.message);
+    });
+  }, []);
 
   const reportSync = useCallback((result: ClientHcpSyncResult, forced: boolean) => {
     if (!result.ok) {
@@ -165,7 +174,7 @@ export function ShopApp() {
   }, [draft, abandonBlankDraft]);
 
   const visible = useMemo(
-    () => sortJobsByJobNumber(filterJobsByTimeframe(board.jobs, timeframe)),
+    () => sortJobsByJobNumber(filterJobsByTimeframe(visibleJobs(board.jobs), timeframe)),
     [board.jobs, timeframe],
   );
   const timeframeLabel = formatTimeframe(timeframe);
