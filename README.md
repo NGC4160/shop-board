@@ -197,7 +197,7 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | --- | --- | --- |
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
 | `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
-| `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
+| `CRON_SECRET` | Required in production | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Production rejects the call when it is unset. Local `next dev` can call the route without it. |
 | `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id`. `DELETE /api/parts` removes one line by that same `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (open, same as jobs — not this token) and write a **separate** Blob file (`ngc-parts-board.json`). A stale PUT merges by line instead of replacing the whole list. |
 
 Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
