@@ -244,6 +244,8 @@ npm run build
 npm start
 ```
 
+Pull requests and pushes to `main` run `.github/workflows/ci.yml`: `npm ci`, lint, `tsc --noEmit`, unit tests, and `next build`.
+
 ## Deploy
 
 Live site: **https://ngc-shop-board.vercel.app** (Vercel project `ngc-shop-board`).
