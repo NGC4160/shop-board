@@ -4,6 +4,7 @@ import {
   createId,
   emptyDraft,
   draftToJob,
+  isDeletedJob,
   isGhostJob,
   isUnscheduledStatus,
   normalizeJobNumber,
@@ -221,12 +222,14 @@ export function mergeHcpJobs(
     );
     if (!statusChanged && !customerChanged && !phoneChanged) {
       const startChanged = nextStart !== (existing.hcpScheduledStartAt ?? null);
+      const restored = isDeletedJob(existing);
       merged.push({
         ...existing,
+        deletedAt: null,
         hcpScheduledStartAt: nextStart,
         statusChangedAt: saneStatusChangedAt(existing, now),
       });
-      if (startChanged) updated += 1;
+      if (startChanged || restored) updated += 1;
       continue;
     }
 
@@ -247,6 +250,7 @@ export function mergeHcpJobs(
       phone: nextPhone,
       status: nextStatus,
       history,
+      deletedAt: null,
       hcpScheduledStartAt: nextStart,
       statusChangedAt: statusChanged ? now : saneStatusChangedAt(existing, now),
       updatedAt: now,
@@ -259,7 +263,14 @@ export function mergeHcpJobs(
     const key = normalizeJobNumber(job.jobNumber);
     if (key && seen.has(key)) continue;
     if (isHcpTrackedJob(job) || isShopCustomerName(job.customerName)) {
-      removed += 1;
+      const alreadyDeleted = isDeletedJob(job);
+      if (!alreadyDeleted) removed += 1;
+      merged.push({
+        ...job,
+        deletedAt: job.deletedAt ?? now,
+        updatedAt: alreadyDeleted ? job.updatedAt : now,
+        statusChangedAt: saneStatusChangedAt(job, now),
+      });
       continue;
     }
     merged.push({

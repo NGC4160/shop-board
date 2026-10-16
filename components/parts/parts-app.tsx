@@ -10,6 +10,7 @@ import {
   partDescriptionError,
   sortParts,
   filterParts,
+  isDeletedPart,
   type PartLine,
 } from "@/lib/parts";
 import {
@@ -117,6 +118,7 @@ export function PartsApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [startDraft, draft, pendingRemove]);
 
+  const activeCount = board.parts.filter((part) => !isDeletedPart(part)).length;
   const visible = useMemo(
     () => sortParts(filterParts(board.parts, { status: statusFilter, search })),
     [board.parts, statusFilter, search],
@@ -142,7 +144,7 @@ export function PartsApp() {
       ? "Release to refresh"
       : pull > 16
         ? "Pull to refresh"
-        : `${board.parts.length} part${board.parts.length === 1 ? "" : "s"}`;
+        : `${activeCount} part${activeCount === 1 ? "" : "s"}`;
 
   return (
     <div className="shop-shell flex min-w-0 flex-col bg-background text-foreground">

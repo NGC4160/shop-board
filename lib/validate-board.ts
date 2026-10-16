@@ -163,6 +163,11 @@ export function validateBoardPut(body: unknown): ValidateResult<SharedBoardPaylo
         return { ok: false, error: `${label}: Date started must be a timestamp or null.` };
       }
     }
+    if ("deletedAt" in jobRecord && jobRecord.deletedAt != null) {
+      if (typeof jobRecord.deletedAt !== "number" || !Number.isFinite(jobRecord.deletedAt) || jobRecord.deletedAt <= 0) {
+        return { ok: false, error: `${label}: deletedAt must be a timestamp or null.` };
+      }
+    }
 
     const upgraded = upgradeJob(jobRecord);
     if (!upgraded) {

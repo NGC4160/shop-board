@@ -68,7 +68,22 @@ export function upgradeJob(value: unknown): CartJob | null {
       now,
     ),
     hcpScheduledStartAt: parseStoredHcpScheduledStartAt(job.hcpScheduledStartAt),
+    deletedAt: readDeletedAt(job.deletedAt),
   };
+}
+
+/** Missing or invalid `deletedAt` means the row is still on the board. */
+export function readDeletedAt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+export function isDeletedJob(job: { deletedAt?: number | null }): boolean {
+  return readDeletedAt(job.deletedAt) != null;
+}
+
+export function visibleJobs<T extends { deletedAt?: number | null }>(jobs: readonly T[]): T[] {
+  return jobs.filter((job) => !isDeletedJob(job));
 }
 
 /** Persist a stored HCP schedule start. Do not fall back to created_at or board `createdAt`. */

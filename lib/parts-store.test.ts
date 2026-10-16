@@ -78,9 +78,11 @@ describe("parts store isolation", () => {
   it("can remove a row and undo", () => {
     replaceParts([SAMPLE_PART_LINE]);
     assert.equal(deletePart("sample-demo-part"), true);
-    assert.equal(getPartsSnapshot().parts.length, 0);
+    assert.equal(getPartsSnapshot().parts.filter((part) => !part.deletedAt).length, 0);
+    assert.ok(getPartsSnapshot().parts[0]?.deletedAt);
     assert.equal(undoDeletePart(), true);
     assert.equal(getPartsSnapshot().parts[0]?.id, "sample-demo-part");
+    assert.equal(getPartsSnapshot().parts[0]?.deletedAt, null);
   });
 
   it("applies a shared snapshot without seeding fake customers", () => {

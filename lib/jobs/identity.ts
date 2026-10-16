@@ -64,9 +64,11 @@ export function hasDuplicateJobNumber(
 ): boolean {
   const normalized = normalizeJobNumber(jobNumber);
   if (!normalized || normalized === "0") return false;
-  return jobs.some(
-    (job) => job.id !== id && normalizeJobNumber(job.jobNumber) === normalized,
-  );
+  return jobs.some((job) => {
+    if (job.id === id) return false;
+    if (typeof job.deletedAt === "number" && job.deletedAt > 0) return false;
+    return normalizeJobNumber(job.jobNumber) === normalized;
+  });
 }
 
 export function jobNumberWarning(

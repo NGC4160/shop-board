@@ -9,6 +9,7 @@ import {
   isBlankIdentity,
   jobNumberError,
   normalizeJobNumber,
+  visibleJobs,
   type CartJob,
 } from "@/lib/jobs";
 import {
@@ -173,7 +174,7 @@ export function ShopApp() {
   }, [draft, abandonBlankDraft]);
 
   const visible = useMemo(
-    () => sortJobsByJobNumber(filterJobsByTimeframe(board.jobs, timeframe)),
+    () => sortJobsByJobNumber(filterJobsByTimeframe(visibleJobs(board.jobs), timeframe)),
     [board.jobs, timeframe],
   );
   const timeframeLabel = formatTimeframe(timeframe);

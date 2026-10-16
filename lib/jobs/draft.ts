@@ -49,6 +49,7 @@ export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
     updatedAt: now,
     statusChangedAt: statusChanged,
     hcpScheduledStartAt: existing?.hcpScheduledStartAt ?? null,
+    deletedAt: existing?.deletedAt ?? null,
   };
 }
 

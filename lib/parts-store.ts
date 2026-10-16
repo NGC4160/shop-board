@@ -329,11 +329,15 @@ export function updatePart(id: string, patch: Partial<PartLine>): boolean {
 }
 
 export function deletePart(id: string): boolean {
-  if (!snapshot.parts.some((item) => item.id === id)) return false;
+  const current = snapshot.parts.find((item) => item.id === id);
+  if (!current || current.deletedAt) return false;
+  const now = Date.now();
   commit(
     {
-      parts: snapshot.parts.filter((item) => item.id !== id),
-      updatedAt: Date.now(),
+      parts: snapshot.parts.map((item) =>
+        item.id === id ? { ...item, deletedAt: now, updatedAt: now } : item,
+      ),
+      updatedAt: now,
     },
     true,
   );

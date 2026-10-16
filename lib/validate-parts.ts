@@ -8,6 +8,7 @@ import {
   normalizePartId,
   partDescriptionError,
   partIdError,
+  readDeletedAt,
   type PartLine,
 } from "@/lib/parts";
 import { isIsoDate } from "@/lib/jobs/timeframe";
@@ -109,6 +110,11 @@ export function validatePartsPut(body: unknown): ValidateResult<PartLine[]> {
         return { ok: false, error: `${label}: updatedAt must be a number.` };
       }
     }
+    if ("deletedAt" in line && line.deletedAt != null) {
+      if (typeof line.deletedAt !== "number" || !Number.isFinite(line.deletedAt) || line.deletedAt <= 0) {
+        return { ok: false, error: `${label}: deletedAt must be a timestamp or null.` };
+      }
+    }
 
     const merged = mergePartLine(null, {
       id,
@@ -122,6 +128,7 @@ export function validatePartsPut(body: unknown): ValidateResult<PartLine[]> {
       expectedDate: typeof line.expectedDate === "string" ? line.expectedDate : "",
       note: typeof line.note === "string" ? line.note : "",
       updatedAt: typeof line.updatedAt === "number" ? line.updatedAt : undefined,
+      deletedAt: readDeletedAt(line.deletedAt),
     });
     parts.push(merged);
   }

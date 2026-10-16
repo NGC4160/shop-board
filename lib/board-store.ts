@@ -8,6 +8,7 @@ import {
   customerNameError,
   hasDuplicateJobNumber,
   sanitizeLoadedJobs,
+  isDeletedJob,
   jobNumberError,
   nextPipelineStatus,
   normalizeJobNumber,
@@ -537,7 +538,14 @@ export function insertJob(job: CartJob): boolean {
   const key = next.jobNumber;
   commit({
     ...snapshot,
-    jobs: [next, ...snapshot.jobs.filter((item) => item.id !== job.id)],
+    jobs: [
+      next,
+      ...snapshot.jobs.filter((item) => {
+        if (item.id === job.id) return false;
+        if (isDeletedJob(item) && normalizeJobNumber(item.jobNumber) === key) return false;
+        return true;
+      }),
+    ],
     dismissedJobNumbers: snapshot.dismissedJobNumbers.filter((item) => item !== key),
   });
   return true;
@@ -550,10 +558,13 @@ export function deleteJob(id: string): boolean {
   const dismissed = key
     ? [...new Set([...snapshot.dismissedJobNumbers, key])]
     : snapshot.dismissedJobNumbers;
+  const now = Date.now();
   commit(
     {
       ...snapshot,
-      jobs: snapshot.jobs.filter((job) => job.id !== id),
+      jobs: snapshot.jobs.map((job) =>
+        job.id === id ? { ...job, deletedAt: now, updatedAt: now } : job,
+      ),
       dismissedJobNumbers: dismissed,
     },
     true,

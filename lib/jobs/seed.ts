@@ -21,7 +21,12 @@ const SEED_PLUS_5 = chicagoDayOffset(5);
 function seed(
   partial: Omit<
     CartJob,
-    "history" | "createdAt" | "updatedAt" | "statusChangedAt" | "hcpScheduledStartAt"
+    | "history"
+    | "createdAt"
+    | "updatedAt"
+    | "statusChangedAt"
+    | "hcpScheduledStartAt"
+    | "deletedAt"
   > & {
     daysAgo: number;
     statusDays: number;
@@ -50,6 +55,7 @@ function seed(
     updatedAt: statusChangedAt,
     statusChangedAt,
     hcpScheduledStartAt: null,
+    deletedAt: null,
     history: [
       { at: createdAt, kind: "created", text: "Added to the board" },
       ...partial.history.map((text, index) => ({
