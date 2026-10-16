@@ -4,6 +4,7 @@ import {
   parseSharedBoardDocument,
   type SharedBoardDocument,
 } from "@/lib/shared-board";
+import { backupPriorDocument } from "@/lib/document-backup";
 import { StoreRaceError, createWriteLock } from "@/lib/store-lock";
 
 export const SHARED_BOARD_BLOB_PATH = "ngc-shop-board.json";
@@ -129,6 +130,13 @@ export async function mutateSharedBoard(
       const loaded = await readFresh();
       const decision = await mutate(loaded.doc);
       if (decision.type !== "write") return decision;
+      if (loaded.doc) {
+        await backupPriorDocument(
+          "ngc-shop-board",
+          loaded.doc,
+          shouldUseFileStore() ? "file" : "blob",
+        );
+      }
       try {
         if (shouldUseFileStore()) await writeFileStore(decision.doc);
         else await writeBlobStore(decision.doc, loaded.etag);

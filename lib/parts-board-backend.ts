@@ -4,6 +4,7 @@ import {
   parseSharedPartsDocument,
   type SharedPartsDocument,
 } from "@/lib/parts-board";
+import { backupPriorDocument } from "@/lib/document-backup";
 import { StoreRaceError, createWriteLock } from "@/lib/store-lock";
 
 /** Separate Blob object from the job board (`ngc-shop-board.json`). */
@@ -127,6 +128,13 @@ export async function mutateSharedParts(
       const loaded = await readFresh();
       const decision = await mutate(loaded.doc);
       if (decision.type !== "write") return decision;
+      if (loaded.doc) {
+        await backupPriorDocument(
+          "ngc-parts-board",
+          loaded.doc,
+          shouldUseFileStore() ? "file" : "blob",
+        );
+      }
       try {
         if (shouldUseFileStore()) await writeFileStore(decision.doc);
         else await writeBlobStore(decision.doc, loaded.etag);
