@@ -5,13 +5,14 @@ import { toast, Toaster } from "sonner";
 import { Plus, X } from "lucide-react";
 import {
   PART_STATUSES,
-  customerNameError,
+  destinationLabel,
   isBlankPartDraft,
   partDescriptionError,
   sortParts,
   filterParts,
   type PartLine,
 } from "@/lib/parts";
+import { DESTINATION_TYPES, destinationError, type DestinationType } from "@/lib/validate-parts";
 import {
   createDraftPart,
   deletePart,
@@ -77,7 +78,7 @@ export function PartsApp() {
 
   const startDraft = useCallback(() => {
     if (draft) {
-      toast.error("Fill customer and part on the new row");
+      toast.error("Fill destination and part on the new row");
       return;
     }
     setDraft(createDraftPart());
@@ -117,7 +118,13 @@ export function PartsApp() {
   const onChange = (id: string, patch: Partial<PartLine>) => {
     if (draft && id === draft.id) {
       const next = { ...draft, ...patch };
-      if (!customerNameError(next.customerName) && !partDescriptionError(next.partDescription)) {
+      if (patch.destinationType === "Inventory") {
+        next.destinationName = "";
+        next.customerName = "Inventory";
+      } else if (patch.destinationName !== undefined) {
+        next.customerName = patch.destinationName;
+      }
+      if (!destinationError(next.destinationType, next.destinationName) && !partDescriptionError(next.partDescription)) {
         const ok = insertPart(next);
         if (ok) setDraft(null);
         return ok;
@@ -187,10 +194,10 @@ export function PartsApp() {
           Add
         </button>
         <input
-          aria-label="Search customer or job"
+          aria-label="Search destination or job"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Customer or job #"
+          placeholder="Destination or job #"
           className="h-8 min-w-0 w-full basis-full rounded-sm border border-border bg-background px-2 text-sm text-foreground sm:flex-1 sm:basis-auto"
         />
         <p className="hidden min-w-0 truncate md:block" role="status" aria-live="polite">
@@ -202,7 +209,7 @@ export function PartsApp() {
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
           NGC Parts Board
         </p>
-        <p className="sr-only">Parts spreadsheet · incoming parts and who they are for</p>
+        <p className="sr-only">Parts spreadsheet · incoming parts and where they are going</p>
 
         {visible.length === 0 ? (
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
@@ -256,7 +263,7 @@ export function PartsApp() {
               Remove from the parts board?
             </h2>
             <p className="mt-2 text-base text-muted">
-              {pendingRemove.customerName || pendingRemove.partDescription || "This line"} leaves
+              {destinationLabel(pendingRemove) || pendingRemove.partDescription || "This line"} leaves
               the shared parts list. Job cards are not changed.
             </p>
             <div className="mt-5 grid grid-cols-2 gap-2">
@@ -273,7 +280,7 @@ export function PartsApp() {
                   const removed = pendingRemove;
                   deletePart(removed.id);
                   setPendingRemove(null);
-                  toast(`Removed ${removed.customerName || "part"} from the parts board`, {
+                  toast(`Removed ${destinationLabel(removed) || "part"} from the parts board`, {
                     action: {
                       label: "Undo",
                       onClick: () => undoDeletePart(),
@@ -306,17 +313,33 @@ function PartDraftComposer({
       <div className="flex items-start gap-1">
         <div className="min-w-0 flex-1">
           <p className="px-1 text-[10px] font-semibold tracking-wide text-muted uppercase sm:text-xs">
-            New part · not on the board until customer and part
+            New part · not on the board until destination and part
           </p>
           <div className="mt-1 grid grid-cols-1 gap-1 sm:grid-cols-2">
-            <input
-              aria-label="Customer"
+            <select
+              aria-label="Destination type"
               autoFocus
-              value={part.customerName}
-              placeholder="Customer"
-              onChange={(event) => onChange(part.id, { customerName: event.target.value })}
-              className="h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-base font-semibold"
-            />
+              value={part.destinationType}
+              onChange={(event) =>
+                onChange(part.id, { destinationType: event.target.value as DestinationType })
+              }
+              className="board-select h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-base font-semibold"
+            >
+              {DESTINATION_TYPES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            {part.destinationType === "Customer" || part.destinationType === "Other" ? (
+              <input
+                aria-label="Destination name"
+                value={part.destinationName}
+                placeholder={part.destinationType === "Customer" ? "Customer" : "Name"}
+                onChange={(event) => onChange(part.id, { destinationName: event.target.value })}
+                className="h-11 min-w-0 w-full rounded-sm border border-border bg-background px-2.5 text-base font-semibold"
+              />
+            ) : null}
             <input
               aria-label="Part description"
               value={part.partDescription}

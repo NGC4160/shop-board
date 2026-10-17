@@ -6,9 +6,11 @@ import {
   PART_CARRIERS,
   PART_STATUS_CHIP,
   PART_STATUSES,
+  destinationLabel,
   trackingUrl,
   type PartLine,
 } from "@/lib/parts";
+import { DESTINATION_TYPES, type DestinationType } from "@/lib/validate-parts";
 import { formatTimeframe, isIsoDate } from "@/lib/jobs";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +25,7 @@ export function PartsTable({ parts, onChange, onRemove }: PartsTableProps) {
     <table className="parts-sheet text-left">
       <colgroup>
         <col className="parts-col-index" />
-        <col className="parts-col-customer" />
+        <col className="parts-col-destination" />
         <col className="parts-col-job" />
         <col className="parts-col-part" />
         <col className="parts-col-vendor" />
@@ -40,7 +42,7 @@ export function PartsTable({ parts, onChange, onRemove }: PartsTableProps) {
             </span>
           </th>
           <th className="board-sticky-head border-b border-r border-border px-1 py-1">
-            <ColumnLabel>Customer</ColumnLabel>
+            <ColumnLabel>Destination</ColumnLabel>
           </th>
           <th className="board-sticky-head border-b border-r border-border px-1 py-1">
             <ColumnLabel>Job number</ColumnLabel>
@@ -77,21 +79,13 @@ export function PartsTable({ parts, onChange, onRemove }: PartsTableProps) {
               </td>
               <td className="border-r border-b border-border px-1 py-1">
                 <div className="flex min-w-0 items-start gap-1">
-                  <div className="min-w-0 flex-1">
-                    <TextField
-                      label="Customer"
-                      value={part.customerName}
-                      placeholder="Customer"
-                      className="font-semibold"
-                      onCommit={(customerName) => onChange(part.id, { customerName })}
-                    />
-                  </div>
+                  <DestinationField part={part} onChange={onChange} />
                   <button
                     type="button"
                     onClick={() => onRemove(part)}
                     className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-subtle hover:bg-surface-3 hover:text-danger"
                     title="Remove from parts board"
-                    aria-label={`Remove ${part.customerName || "part"} from the parts board`}
+                    aria-label={`Remove ${destinationLabel(part) || "part"} from the parts board`}
                   >
                     <Trash2 className="size-4" />
                   </button>
@@ -159,6 +153,89 @@ export function PartsTable({ parts, onChange, onRemove }: PartsTableProps) {
         })}
       </tbody>
     </table>
+  );
+}
+
+function DestinationField({
+  part,
+  onChange,
+}: {
+  part: PartLine;
+  onChange: (id: string, patch: Partial<PartLine>) => boolean;
+}) {
+  const [type, setType] = useState<DestinationType>(part.destinationType);
+  const [name, setName] = useState(part.destinationName);
+  const [seenType, setSeenType] = useState(part.destinationType);
+  const [seenName, setSeenName] = useState(part.destinationName);
+
+  if (part.destinationType !== seenType || part.destinationName !== seenName) {
+    setSeenType(part.destinationType);
+    setSeenName(part.destinationName);
+    setType(part.destinationType);
+    setName(part.destinationName);
+  }
+
+  const commitType = (nextType: DestinationType) => {
+    setType(nextType);
+    if (nextType === "Inventory") {
+      setName("");
+      onChange(part.id, {
+        destinationType: "Inventory",
+        destinationName: "",
+        customerName: "Inventory",
+      });
+      return;
+    }
+    const trimmed = name.replace(/\s+/g, " ").trim();
+    if (!trimmed) return;
+    onChange(part.id, {
+      destinationType: nextType,
+      destinationName: trimmed,
+      customerName: trimmed,
+    });
+  };
+
+  const commitName = (raw: string) => {
+    const next = raw.replace(/\s+/g, " ").trim();
+    if (!next || type === "Inventory") {
+      setName(part.destinationName);
+      return;
+    }
+    setName(next);
+    if (next === part.destinationName && type === part.destinationType) return;
+    onChange(part.id, {
+      destinationType: type,
+      destinationName: next,
+      customerName: next,
+    });
+  };
+
+  const named = type === "Customer" || type === "Other";
+
+  return (
+    <div className="grid min-w-0 flex-1 gap-1">
+      <select
+        aria-label="Destination type"
+        value={type}
+        onChange={(event) => commitType(event.target.value as DestinationType)}
+        className="board-select h-11 w-full min-w-0 rounded-sm border border-border bg-background px-2.5 text-base font-semibold"
+      >
+        {DESTINATION_TYPES.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+      {named ? (
+        <TextField
+          label="Destination name"
+          value={name}
+          placeholder={type === "Customer" ? "Customer" : "Name"}
+          className="font-semibold"
+          onCommit={commitName}
+        />
+      ) : null}
+    </div>
   );
 }
 
