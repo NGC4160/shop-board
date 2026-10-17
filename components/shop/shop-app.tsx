@@ -236,7 +236,7 @@ export function ShopApp() {
         data-testid="hcp-refresh"
         style={{ minHeight: Math.max(40, refreshing ? 44 : pull) }}
       >
-        <BoardNav current="jobs" />
+        <BoardNav current="aging" />
         <TimeframeFilter
           value={timeframe}
           onChange={(value) => savePrefs({ timeframe: value })}
@@ -249,7 +249,7 @@ export function ShopApp() {
 
       <main ref={scrollRef} className="board-scroll min-h-0 min-w-0 flex-1">
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
-          NGC Shop Board
+          Aging Carts
         </p>
         <p className="sr-only">Spreadsheet · numbered in job-number order</p>
 

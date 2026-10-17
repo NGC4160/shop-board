@@ -47,7 +47,7 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
             <p className="font-display text-xs font-semibold tracking-[0.22em] text-accent uppercase">
               Neighborhood Golf Carts · Covington
             </p>
-            <h1 className="font-display text-4xl font-semibold tracking-tight">Shop Board</h1>
+            <h1 className="font-display text-4xl font-semibold tracking-tight">Aging Carts</h1>
           </div>
         </div>
         <div className="text-right">

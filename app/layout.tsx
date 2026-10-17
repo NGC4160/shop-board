@@ -21,9 +21,9 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Neighborhood Golf Carts — Shop Board",
+  title: "Neighborhood Golf Carts — Aging Carts",
   description:
-    "Shop floor board for Neighborhood Golf Carts in Covington, LA. Board row number, Housecall Pro scheduled start, customer, job number, primary tech, Jobs pipeline status, next step, and Timeframe date.",
+    "Shop floor boards for Neighborhood Golf Carts in Covington, LA. Aging carts, incoming parts, and inventory.",
 };
 
 export const viewport: Viewport = {

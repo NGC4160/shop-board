@@ -234,7 +234,7 @@
 
   .parts-sheet {
     --parts-index-w: 2.25rem;
-    --parts-customer-w: 13.5rem;
+    --parts-destination-w: 16.5rem;
     --parts-job-w: 5.5rem;
     /* Widest content column so descriptions can wrap in place. */
     --parts-part-w: 18rem;
@@ -243,7 +243,7 @@
     --parts-tracking-w: 7.5rem;
     --parts-date-w: 10.25rem;
     --parts-note-w: 5.25rem;
-    --parts-min-w: 80rem;
+    --parts-min-w: 83rem;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
@@ -254,8 +254,8 @@
     width: var(--parts-index-w);
   }
 
-  .parts-col-customer {
-    width: var(--parts-customer-w);
+  .parts-col-destination {
+    width: var(--parts-destination-w);
   }
 
   .parts-col-job {
@@ -284,6 +284,38 @@
 
   .parts-col-note {
     width: var(--parts-note-w);
+  }
+
+  .inventory-sheet {
+    --inventory-min-w: 92rem;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: max(100%, var(--inventory-min-w));
+  }
+
+  .inventory-col-name {
+    width: 16rem;
+  }
+
+  .inventory-col-number {
+    width: 8rem;
+  }
+
+  .inventory-col-supplier {
+    width: 8rem;
+  }
+
+  .inventory-col-description {
+    width: 16rem;
+  }
+
+  .inventory-col-qty {
+    width: 7rem;
+  }
+
+  .inventory-col-money {
+    width: 8rem;
   }
 
   .parts-description {
@@ -369,7 +401,7 @@
 
     .parts-sheet {
       --parts-index-w: 2.25rem;
-      --parts-customer-w: 9.5rem;
+      --parts-destination-w: 12rem;
       --parts-job-w: 5.25rem;
       --parts-part-w: 16rem;
       --parts-vendor-w: 6.5rem;
@@ -377,7 +409,7 @@
       --parts-tracking-w: 7.25rem;
       --parts-date-w: 10rem;
       --parts-note-w: 5rem;
-      --parts-min-w: 71.5rem;
+      --parts-min-w: 74rem;
     }
   }
 
@@ -409,14 +441,21 @@
   .board-col-timeframe,
   .parts-sheet,
   .parts-col-index,
-  .parts-col-customer,
+  .parts-col-destination,
   .parts-col-job,
   .parts-col-part,
   .parts-col-vendor,
   .parts-col-status,
   .parts-col-tracking,
   .parts-col-date,
-  .parts-col-note {
+  .parts-col-note,
+  .inventory-sheet,
+  .inventory-col-name,
+  .inventory-col-number,
+  .inventory-col-supplier,
+  .inventory-col-description,
+  .inventory-col-qty,
+  .inventory-col-money {
     width: auto !important;
   }
 
