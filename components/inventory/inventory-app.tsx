@@ -16,6 +16,7 @@ import {
   updateInventoryItem,
 } from "@/lib/inventory-store";
 import { BoardNav } from "@/components/shop/board-nav";
+import { InventoryAttention, InventoryUsageLog } from "@/components/inventory/inventory-usage";
 import { InventoryTable } from "@/components/inventory/inventory-table";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
 import { useMobileViewportRestore } from "@/components/shop/use-mobile-viewport";
@@ -111,17 +112,20 @@ export function InventoryApp() {
         </p>
         <p className="sr-only">Inventory spreadsheet · quantities and value on hand</p>
 
+        <InventoryAttention flags={board.flags} sync={board.sync} />
+
         {visible.length === 0 ? (
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
             <p className="font-display text-2xl font-semibold">No inventory on hand</p>
             <p className="mt-2 text-sm text-muted">
-              Lines marked Inventory on the parts board show up here after the next parts save.
-              This list starts empty until that link is written.
+              A row is added when an Inventory parts line is received, or when stock is entered here.
+              Deleting a parts line leaves the row, its qty, and its value in place.
             </p>
           </div>
         ) : (
           <InventoryTable items={visible} onChange={onChange} />
         )}
+        <InventoryUsageLog usage={board.usage} />
       </main>
     </div>
   );

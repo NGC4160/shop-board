@@ -112,6 +112,8 @@ v2 used to store the working copy only in the browser (`localStorage` key `ngc-s
 
 Vercel Cron hits `/api/cron/sync-jobs` at **12:00 UTC and 13:00 UTC**. The handler only runs the Housecall Pro pull when the clock is **7:00 AM in America/Chicago**, so daylight saving does not drift the shop’s 7am refresh.
 
+Inventory usage is a separate poll, `/api/cron/sync-inventory`, at **13:00, 18:00, and 23:00 UTC** (about 8am, 1pm, and 6pm Chicago during daylight saving, one hour later in winter). It reads completed jobs and does not write to Housecall Pro. An optional `job.completed` webhook does the same read for one job. The poll is what runs if the webhook is not set up.
+
 Each shop tablet/TV then merges that job list into the **shared** board:
 
 - On load, the client GETs `/api/board` (the shared store) and applies that snapshot. Morning HCP sync and **Sync** / pull-to-refresh then fetch `/api/jobs/hcp` and **merge by job number** on top of it.
@@ -198,15 +200,21 @@ curl -X DELETE https://ngc-shop-board.vercel.app/api/parts \
 
 Local `next dev` uses `.data/ngc-parts-board.json` (gitignored), next to the job-board file. Each save first copies the previous document to `.data/ngc-parts-board.prior.json` (Blob path `ngc-parts-board.prior.json`).
 
-The document is version 2: `parts` plus `inventory`. A v1 file with only `parts` still loads. A parts PUT that omits `inventory` does not clear stock. Unknown keys on the document and on each line are kept.
+The document is version 2: `parts`, `inventory`, plus server-owned receipt, usage, and flag lists. A v1 file with only `parts` still loads. A parts PUT that omits `inventory` does not clear stock. A shop-floor inventory PUT does not clear usage. Unknown keys on the document and on each line are kept.
 
 ### Inventory (`/inventory`)
 
-On-hand stock is an `inventory` array in the **same** `ngc-parts-board.json` file, so a destination change and its stock link are one write. `GET /api/inventory` is open. Shop-floor edits use `PUT /api/inventory` (open, same updatedAt merge as parts; send `If-Match` with the document `updatedAt` for a 409 when that revision is stale). `POST` and `DELETE /api/inventory` use `Authorization: Bearer $PARTS_WRITE_TOKEN`. DELETE sets `deletedAt`; it does not drop the row.
+On-hand stock is an `inventory` array in the **same** `ngc-parts-board.json` file. `GET /api/inventory` is open. Shop-floor edits use `PUT /api/inventory` (open, same updatedAt merge as parts; send `If-Match` with the document `updatedAt` for a 409 when that revision is stale). `POST` and `DELETE /api/inventory` use `Authorization: Bearer $PARTS_WRITE_TOKEN`. DELETE sets `deletedAt`; it does not drop the row, and a later parts save does not bring that row back.
 
-On any parts write, each line with `destinationType` Inventory that is not soft-deleted gets one inventory row keyed by `sourcePartLineId`. A new row copies the part description, vendor, and note (or the description when the note is empty), and leaves qty at 0 and part number, min qty, min order qty, and unit value blank. Later parts writes refresh the name, supplier, and description only. Qty, mins, unit value, and part number stay as inventory left them. Changing the line off Inventory, removing it, or soft-deleting it soft-deletes that link. One line maps to one item — mixed orders are not split here. The balance on the inventory page is qty × unit value, treating a blank unit value as 0.
+An inventory row is not owned by a Parts board line. Deleting a parts line, editing it, or moving it off Inventory leaves the row, its qty, its unit value, and its description. Receiving stock still adds qty: when a parts line’s destination is Inventory and its status **becomes** Received or Checked in, that line is receipted once. Qty is the line’s positive `quantity` or `qty` when the Parts bot sent one, otherwise 1. A live row with the same `sourcePartLineId`, or exactly one live row with the same part number, gets that qty added. Name, description, supplier, and unit value on an existing row are left alone. If no live row matches, a new row is created. A retired row with that link or part number blocks the receipt, so the retired row is not recreated and a second row is not added at qty 0. Saving the same parts line again does not add qty a second time. A new order needs a new parts line id.
 
-Do not seed inventory from this app. Adding the live Inventory lines is a data step after deploy.
+Completed Housecall Pro jobs deduct on-hand qty. The poll (and the optional webhook) reads material line items and material job inputs, matches each part to one live inventory row by exact part number or by the row’s HCP material id (`service_item_id`), and subtracts the qty. The same part on both sources is two uses. Reprocessing a job does not deduct twice. Reopening the job, or removing the line, puts the qty back. Unmatched parts and usage with no remaining Housecall line are listed under **Needs attention**. Nothing is written to Housecall Pro or QuickBooks. The usage log shows qty × unit value so the bookkeeper can draft a journal by hand.
+
+Housecall Pro’s public API lists material line items (`GET /jobs/{id}/line_items`) and material job inputs (`GET /jobs/{id}/job_input_materials`, including `part_number`). It does not list miscellaneous job inputs. A miscellaneous cost is deducted only when it is entered as a material line or a material job input. `job.completed` exists, but the webhook body does not include line items or job inputs, so the handler reads those itself. The scheduled poll is the path that works with no webhook setup. The first poll looks back `INVENTORY_USAGE_LOOKBACK_DAYS` (default 1, max 90) and then keeps a cursor. Jobs with no `completed_at` are skipped.
+
+The balance on the inventory page is qty × unit value, treating a blank unit value as 0. On-hand qty may go negative when a job used more than the shelf shows.
+
+Do not seed inventory from this app. Rows already on the board stay as they are, including qty, unit value, and description.
 
 ### Required Vercel environment variables
 
@@ -216,12 +224,12 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | --- | --- | --- |
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
 | `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
-| `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
+| `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to `/api/cron/sync-jobs` and `/api/cron/sync-inventory`. Without it, only Vercel’s cron user-agent (or local `next dev`) can call those routes. |
 | `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id`. `DELETE /api/parts` removes one line by that same `id`. The same token gates `POST` and `DELETE /api/inventory`. Never commit this value. `GET /api/parts` and `GET /api/inventory` stay open like the job board. Shop-floor edits use `PUT /api/parts` and `PUT /api/inventory` (open, same as jobs — not this token) and write one Blob file (`ngc-parts-board.json`). A stale PUT merges by line instead of replacing the whole list. |
 
 Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
 
-Optional: `HOUSECALL_PRO_AUTH_SCHEME=bearer` if the key is a Bearer token instead of `Token <key>`; `HOUSECALL_PRO_COMPANY_ID` for multi-location; `HOUSECALL_PRO_API_URL` (defaults to `https://api.housecallpro.com`).
+Optional: `HOUSECALL_PRO_AUTH_SCHEME=bearer` if the key is a Bearer token instead of `Token <key>`; `HOUSECALL_PRO_COMPANY_ID` for multi-location; `HOUSECALL_PRO_API_URL` (defaults to `https://api.housecallpro.com`); `HOUSECALL_PRO_WEBHOOK_SECRET` for the optional job webhook at `/api/webhooks/housecall-pro`; `INVENTORY_USAGE_LOOKBACK_DAYS` (default 1, max 90) for the first inventory poll’s completed-job window.
 
 Without `HOUSECALL_PRO_API_KEY`, job-number sort still ships, and the 7am cron/route still runs as a stub that reports the missing token. Live HCP job refresh is blocked until the key is set.
 

@@ -113,15 +113,15 @@ export function buildHcpJobsListUrl(
   return url;
 }
 
-function authHeaders(apiKey: string): Headers {
+export function hcpAuthHeaders(apiKey: string, env: NodeJS.ProcessEnv = process.env): Headers {
   const headers = new Headers({ Accept: "application/json" });
-  const scheme = process.env.HOUSECALL_PRO_AUTH_SCHEME?.trim().toLowerCase();
+  const scheme = env.HOUSECALL_PRO_AUTH_SCHEME?.trim().toLowerCase();
   if (scheme === "bearer") {
     headers.set("Authorization", `Bearer ${apiKey}`);
   } else {
     headers.set("Authorization", `Token ${apiKey}`);
   }
-  const companyId = process.env.HOUSECALL_PRO_COMPANY_ID?.trim();
+  const companyId = env.HOUSECALL_PRO_COMPANY_ID?.trim();
   if (companyId) headers.set("X-Company-Id", companyId);
   return headers;
 }
@@ -392,7 +392,7 @@ async function fetchJobsPage(
 ): Promise<{ jobs: unknown[]; totalPages: number | null }> {
   const url = buildHcpJobsListUrl(baseUrl, page);
   const response = await fetch(url, {
-    headers: authHeaders(apiKey),
+    headers: hcpAuthHeaders(apiKey),
     cache: "no-store",
   });
   const rawText = await response.text().catch(() => "");

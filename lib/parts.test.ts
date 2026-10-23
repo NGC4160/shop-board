@@ -59,6 +59,30 @@ describe("sanitize and upsert", () => {
     assert.equal(second.line.trackingNumber, "1Z999AA10123456784");
   });
 
+  it("keeps a bot quantity extra and lets a later post replace it", () => {
+    const first = upsertPartLine([], {
+      id: "line-qty",
+      customerName: "Inventory",
+      destinationType: "Inventory",
+      partDescription: "Example solenoid",
+      quantity: 3,
+      partNumber: "PN-9",
+    });
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    assert.equal((first.line as { quantity?: number }).quantity, 3);
+    assert.equal((first.line as { partNumber?: string }).partNumber, "PN-9");
+    const second = upsertPartLine(first.parts, {
+      id: "line-qty",
+      status: "Checked in",
+      quantity: 4,
+    });
+    assert.equal(second.ok, true);
+    if (!second.ok) return;
+    assert.equal((second.line as { quantity?: number }).quantity, 4);
+    assert.equal((second.line as { partNumber?: string }).partNumber, "PN-9");
+  });
+
   it("removes one line by id and leaves the rest", () => {
     const first = upsertPartLine([], {
       id: "line-keep",
