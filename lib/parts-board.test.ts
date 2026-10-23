@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { seedJobs } from "./jobs.ts";
 import { SAMPLE_PART_LINE, sanitizePartLine } from "./parts.ts";
-import { syncInventoryFromParts, type InventoryItem } from "./inventory.ts";
+import { type InventoryItem } from "./inventory.ts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
   mergeSharedPartsDocuments,
   parseSharedPartsDocument,
   readPartsWriteBaseUpdatedAt,
+  replacePartsLines,
   toSharedPartsDocument,
 } from "./parts-board.ts";
 import { SHARED_PARTS_PRIOR_BLOB_PATH } from "./parts-board-backend.ts";
@@ -72,7 +73,16 @@ describe("parts document isolation", () => {
   it("stamps version 2 without a jobs key", () => {
     const doc = emptySharedPartsDocument(1);
     assert.equal(doc.version, 2);
-    assert.deepEqual(Object.keys(doc).sort(), ["inventory", "parts", "updatedAt", "version"]);
+    assert.deepEqual(Object.keys(doc).sort(), [
+      "inventory",
+      "inventoryFlags",
+      "inventoryReceipts",
+      "inventorySync",
+      "inventoryUsage",
+      "parts",
+      "updatedAt",
+      "version",
+    ]);
   });
 });
 
@@ -164,6 +174,7 @@ describe("v1 parts documents", () => {
     return {
       id: "inv-stock",
       sourcePartLineId: "LINE-STOCK",
+      hcpMaterialId: null,
       partName: "Example bushing",
       partNumber: "PN-1",
       supplier: "Example Vendor",
@@ -239,10 +250,11 @@ describe("v1 parts documents", () => {
     assert.equal(result.doc.version, 2);
   });
 
-  it("syncs a new Inventory line without clearing an existing manual row", () => {
+  it("receives a new Inventory line without clearing an existing manual row", () => {
     const manual: InventoryItem = {
       id: "inv-manual",
       sourcePartLineId: null,
+      hcpMaterialId: null,
       partName: "Windshield",
       partNumber: "",
       supplier: "Example Glass",
@@ -254,12 +266,63 @@ describe("v1 parts documents", () => {
       updatedAt: 1,
       deletedAt: null,
     };
+    const current = {
+      ...emptySharedPartsDocument(1),
+      inventory: [manual],
+    };
     const part = sanitizePartLine(legacyLine);
     assert.ok(part);
-    const synced = syncInventoryFromParts([part], [manual], 5);
-    assert.equal(synced.filter((item) => item.sourcePartLineId == null).length, 1);
-    assert.equal(synced.filter((item) => item.sourcePartLineId === "LINE-STOCK").length, 1);
-    assert.equal(synced.find((item) => item.id === "inv-manual")?.qtyOnHand, 1);
+    const next = replacePartsLines(current, [part], 5);
+    assert.equal(next.inventory.find((item) => item.id === "inv-manual")?.qtyOnHand, 1);
+    assert.equal(next.inventory.filter((item) => item.sourcePartLineId === "LINE-STOCK").length, 1);
+    assert.equal(next.inventory.find((item) => item.sourcePartLineId === "LINE-STOCK")?.description, legacyLine.note);
+  });
+
+  it("keeps qty and value when a checked-in Inventory line is deleted", () => {
+    const part = sanitizePartLine({ ...legacyLine, status: "Checked in" });
+    assert.ok(part);
+    const current = {
+      ...emptySharedPartsDocument(1_000),
+      parts: [part],
+      inventory: [stockItem({ description: "Keep this", qtyOnHand: 4, unitValue: 10 })],
+      inventoryReceipts: [
+        { partLineId: part.id, inventoryItemId: "inv-stock", qty: 1, appliedAt: 1, skipped: false },
+      ],
+    };
+    const next = replacePartsLines(current, [], 2_000);
+    assert.equal(next.parts.length, 0);
+    assert.equal(next.inventory.length, 1);
+    assert.equal(next.inventory[0]?.qtyOnHand, 4);
+    assert.equal(next.inventory[0]?.unitValue, 10);
+    assert.equal(next.inventory[0]?.description, "Keep this");
+    assert.equal(next.inventory[0]?.deletedAt, null);
+  });
+
+  it("does not recreate a retired inventory row from a parts save", () => {
+    const part = sanitizePartLine({ ...legacyLine, status: "Checked in" });
+    assert.ok(part);
+    const retired = stockItem({ deletedAt: 500, qtyOnHand: 0, unitValue: 0, description: "Retired shelf" });
+    const current = {
+      ...emptySharedPartsDocument(1_000),
+      parts: [part],
+      inventory: [retired],
+    };
+    const result = applyIncomingPartsPut(
+      current,
+      {
+        parts: [{ ...legacyLine, status: "Checked in", note: "Edited after retire", updatedAt: 2_000 }],
+        updatedAt: 1_000,
+      },
+      3_000,
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.doc.inventory.length, 1);
+    assert.equal(result.doc.inventory[0]?.id, "inv-stock");
+    assert.equal(result.doc.inventory[0]?.deletedAt, 500);
+    assert.equal(result.doc.inventory[0]?.qtyOnHand, 0);
+    assert.equal(result.doc.inventory[0]?.unitValue, 0);
+    assert.equal(result.doc.inventory[0]?.description, "Retired shelf");
   });
 
   it("names the rolling prior document used before each save", () => {
