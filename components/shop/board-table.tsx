@@ -30,9 +30,11 @@ type BoardTableProps = {
   onChange: (id: string, patch: Partial<CartJob>) => boolean;
   onRemove: (job: CartJob) => void;
   focusId?: string | null;
+  /** Same instant the board used to sort, so the Days cell matches that order. */
+  now: number;
 };
 
-export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: BoardTableProps) {
+export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId, now }: BoardTableProps) {
   return (
     <table className="board-sheet text-left">
       <colgroup>
@@ -87,6 +89,7 @@ export function BoardTable({ jobs, allJobs, onChange, onRemove, focusId }: Board
           const startedLabel = displayDaysSinceStarted(
             job.hcpWorkStartedAt,
             job.hcpScheduledStartAt,
+            now,
           );
           return (
             <tr

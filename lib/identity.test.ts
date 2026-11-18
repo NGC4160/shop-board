@@ -12,6 +12,7 @@ import {
   listedOtherError,
   normalizeJobNumber,
   PIPELINE_STATUSES,
+  PRIMARY_TECHS,
   sanitizeLoadedJobs,
   seedJobs,
 } from "./jobs.ts";
@@ -86,6 +87,23 @@ describe("identity required", () => {
     ]);
     assert.equal(loaded.some((job) => job.id === "ghost-1"), false);
     assert.equal(loaded.some((job) => job.jobNumber === "1847"), true);
+  });
+
+  it("keeps a former primary tech when loading a stored job", () => {
+    const loaded = sanitizeLoadedJobs([
+      { ...seedJobs[0], id: "legacy-ryan", primaryTech: "Ryan Gorgoglione" },
+    ]);
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0]?.primaryTech, "Ryan Gorgoglione");
+    assert.equal((PRIMARY_TECHS as readonly string[]).includes("Ryan Gorgoglione"), false);
+  });
+
+  it("offers Thomas Wilson on the roster and seeds only current techs", () => {
+    assert.deepEqual(PRIMARY_TECHS, ["Marlon Gray", "Thomas Wilson", "Hayden Silva"]);
+    for (const job of seedJobs) {
+      if (!job.primaryTech) continue;
+      assert.equal((PRIMARY_TECHS as readonly string[]).includes(job.primaryTech), true);
+    }
   });
 
   it("blocks Other… values that match a listed pipeline stage", () => {
