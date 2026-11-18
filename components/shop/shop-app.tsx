@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast, Toaster } from "sonner";
 import {
   customerNameError,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/board-store";
 import { filterJobsByTimeframe } from "@/lib/filters";
 import { jobsOverSevenDaysStarted } from "@/lib/startedFilter";
-import { sortJobsByJobNumber } from "@/lib/sort";
+import { sortJobsByDaysHeld } from "@/lib/sort";
 import {
   refreshHcpJobs,
   startHcpMorningSync,
@@ -50,6 +50,7 @@ export function ShopApp() {
   const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<ClientHcpSyncResult | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const timeframe = board.prefs.timeframe ?? "";
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
@@ -72,6 +73,11 @@ export function ShopApp() {
       return;
     }
     if (forced) toast("Housecall Pro · up to date");
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -165,9 +171,9 @@ export function ShopApp() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [draft, abandonBlankDraft]);
 
-  const visible = useMemo(
-    () => sortJobsByJobNumber(filterJobsByTimeframe(jobsOverSevenDaysStarted(board.jobs), timeframe)),
-    [board.jobs, timeframe],
+  const visible = sortJobsByDaysHeld(
+    filterJobsByTimeframe(jobsOverSevenDaysStarted(board.jobs, now), timeframe),
+    now,
   );
   const timeframeLabel = formatTimeframe(timeframe);
 
@@ -251,7 +257,7 @@ export function ShopApp() {
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
           Aging Carts
         </p>
-        <p className="sr-only">Spreadsheet · numbered in job-number order</p>
+        <p className="sr-only">Spreadsheet · longest in the shop first</p>
 
         {visible.length === 0 ? (
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
@@ -297,6 +303,7 @@ export function ShopApp() {
           <BoardTable
             jobs={visible}
             allJobs={board.jobs}
+            now={now}
             onChange={onChange}
             onRemove={setPendingRemove}
             focusId={focusId}

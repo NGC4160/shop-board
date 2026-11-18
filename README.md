@@ -10,10 +10,10 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 
-One dense table on one page. Rows are jobs. Columns are these fields, in this order, always sorted by job number ascending:
+One dense table on one page. Rows are jobs. Columns are these fields, in this order. The sheet is sorted by how long the shop has had the cart, longest first (the **Days** column). An equal day count breaks by job number, lowest first.
 
-1. **#** (sequential board row 1–n)
-2. **Date started** (Housecall Pro `schedule.scheduled_start`, America/Chicago; dash when missing or Unscheduled — never invented)
+1. **#** (sequential board row 1–n in that order)
+2. **Days** (whole days since the Housecall Pro clock-in, `work_timestamps.started_at`. If that clock-in is missing, whole days since `schedule.scheduled_start`. Dash when neither is usable. This number is the sort key. The board’s `createdAt` is not used.)
 3. **Customer name**
 4. **Job number**
 5. **Primary tech**
@@ -37,7 +37,7 @@ Customer name and job number are required. Empty or whitespace-only values show 
 
 Primary tech and Current Status are native `<select>` controls (OS picker on iOS/Android — they do not open the soft keyboard). Each list still ends with **Other…**, which is the only path that shows a text field. Status options are the full Housecall Pro pipeline; Primary tech is Field Techs + Unassigned.
 
-Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status.
+Rows are **sorted by days the shop has had the cart**, longest first. That is the same whole-day count as the **Days** column: Housecall Pro clock-in (`work_timestamps.started_at` / `hcpWorkStartedAt`), or `schedule.scheduled_start` when the clock-in is missing. Carts with no usable date sort last. Equal counts break by job number, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status. The wall display uses the same order inside each stage.
 
 ## Customer names from Housecall Pro
 
@@ -63,17 +63,19 @@ Live `GET /jobs?page=&page_size=` includes `schedule` on each Job — no `expand
 
 ## Main board list
 
-The shop board at `/` shows only open jobs whose Housecall Pro clock-in, `work_timestamps.started_at`, is more than 7 days ago. Sync stores that instant as `hcpWorkStartedAt` and leaves it null when the field is missing. Schedule start, `created_at`, and the board’s `createdAt` are not used for this filter, so a job with no clock-in is hidden. `/parts`, `/wall`, and the board APIs still return the full list.
+The shop board at `/` shows only open jobs whose Housecall Pro clock-in, `work_timestamps.started_at`, is more than 7 days ago. Sync stores that instant as `hcpWorkStartedAt` and leaves it null when the field is missing. Schedule start, `created_at`, and the board’s `createdAt` are not used for this filter, so a job with no clock-in is hidden. Visible rows are ordered by that same clock-in (longest first), not by job number. `/parts`, `/wall`, and the board APIs still return the full list. The wall still shows every open stage, with the longest-held cart first inside each stage.
 
 ## Primary tech
 
 Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team & Permissions). Office Staff and other roles are not included.
 
 - Marlon Gray
-- Ryan Gorgoglione
+- Thomas Wilson
 - Hayden Silva
 
 Unassigned is allowed.
+
+**Ryan Gorgoglione** is no longer a choice. A job that already has `primaryTech` "Ryan Gorgoglione" — from the shared board or from a Housecall Pro sync that still assigns him — keeps that name on the row until someone reassigns it. Loading the board does not drop or error on that name. A Housecall Pro job assigned to Thomas Wilson maps to him.
 
 ## Statuses (Housecall Pro jobs pipeline)
 

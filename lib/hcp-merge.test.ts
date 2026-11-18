@@ -12,7 +12,7 @@ import {
   STALE_HCP_COMPANY_CUSTOMER,
 } from "./hcp-merge.ts";
 import { mapHcpJob } from "./hcp.ts";
-import { seedJobs, upgradeJob } from "./jobs.ts";
+import { LEGACY_PRIMARY_TECHS, PRIMARY_TECHS, seedJobs, upgradeJob } from "./jobs.ts";
 
 describe("mapHcpJob", () => {
   it("maps invoice number, customer, and open work status", () => {
@@ -31,6 +31,36 @@ describe("mapHcpJob", () => {
     assert.equal(mapped?.primaryTech, "Hayden Silva");
     assert.equal(mapped?.scheduledStart, null);
     assert.equal(mapped?.schedulePresent, false);
+  });
+
+  it("maps Thomas Wilson and still maps a former tech who is no longer selectable", () => {
+    assert.equal((PRIMARY_TECHS as readonly string[]).includes("Thomas Wilson"), true);
+    assert.equal((PRIMARY_TECHS as readonly string[]).includes("Ryan Gorgoglione"), false);
+    assert.deepEqual(LEGACY_PRIMARY_TECHS, ["Ryan Gorgoglione"]);
+    const thomas = mapHcpJob({
+      id: "tw",
+      invoice_number: "1902",
+      work_status: "scheduled",
+      customer: { first_name: "Ada", last_name: "Lovelace" },
+      assigned_employees: [{ first_name: "Thomas", last_name: "Wilson", role: "field_tech" }],
+    });
+    assert.equal(thomas?.primaryTech, "Thomas Wilson");
+    const ryan = mapHcpJob({
+      id: "rg",
+      invoice_number: "1903",
+      work_status: "in progress",
+      customer: { first_name: "Sam", last_name: "Booth" },
+      assigned_employees: [{ first_name: "Ryan", last_name: "Gorgoglione", role: "field_tech" }],
+    });
+    assert.equal(ryan?.primaryTech, "Ryan Gorgoglione");
+    const office = mapHcpJob({
+      id: "off",
+      invoice_number: "1904",
+      work_status: "scheduled",
+      customer: { first_name: "Sam", last_name: "Booth" },
+      assigned_employees: [{ first_name: "Jesse", last_name: "Landry", role: "office" }],
+    });
+    assert.equal(office?.primaryTech, "");
   });
 
   it("maps schedule.scheduled_start when HCP sends a real timestamp", () => {
@@ -123,6 +153,39 @@ describe("mergeHcpJobs", () => {
     assert.equal(jobs[0].notes, existing.notes);
     assert.equal(jobs[0].primaryTech, existing.primaryTech);
     assert.equal(jobs[0].bay, existing.bay);
+  });
+
+  it("keeps Ryan Gorgoglione on an existing job when a later sync names someone else", () => {
+    const local = seedJobs.filter((job) => job.jobNumber === "1842").map((job) => ({
+      ...job,
+      primaryTech: "Ryan Gorgoglione",
+    }));
+    const { jobs } = mergeHcpJobs(local, [
+      {
+        hcpId: "hcp-1842",
+        jobNumber: "1842",
+        customerName: "Mike Landry",
+        phone: local[0].phone,
+        status: "Awaiting QC",
+        statusIsPipeline: true,
+        primaryTech: "Thomas Wilson",
+      },
+    ]);
+    assert.equal(jobs[0].primaryTech, "Ryan Gorgoglione");
+  });
+
+  it("assigns Thomas Wilson on a new Housecall Pro row", () => {
+    const mapped = mapHcpJob({
+      id: "tw-new",
+      invoice_number: "1902",
+      work_status: "in progress",
+      customer: { first_name: "Ada", last_name: "Lovelace" },
+      assigned_employees: [{ first_name: "Thomas", last_name: "Wilson" }],
+    });
+    assert.ok(mapped);
+    const { jobs, added } = mergeHcpJobs([], [mapped]);
+    assert.equal(added, 1);
+    assert.equal(jobs[0].primaryTech, "Thomas Wilson");
   });
 
   it("does not overwrite a shop pipeline status with coarse work_status", () => {

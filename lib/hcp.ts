@@ -1,4 +1,5 @@
 import {
+  LEGACY_PRIMARY_TECHS,
   PRIMARY_TECHS,
   coerceMillis,
   isPipelineStatus,
@@ -16,7 +17,7 @@ export type HcpOpenJob = {
   status: string;
   /** True when status is an exact Housecall Pro Jobs pipeline stage name. */
   statusIsPipeline: boolean;
-  /** Field tech name when it matches the shop dropdown; else empty. */
+  /** Current or former field tech. Empty when the assignee is not one of those names. */
   primaryTech: string;
   /** Housecall Pro `schedule.scheduled_start` millis. Null when missing — never invented. */
   scheduledStart?: number | null;
@@ -350,6 +351,8 @@ function pipelineStatusFromJob(job: Record<string, unknown>): string | null {
   return null;
 }
 
+const HCP_TECH_NAMES = new Set<string>([...PRIMARY_TECHS, ...LEGACY_PRIMARY_TECHS]);
+
 function techFromHcp(job: Record<string, unknown>): string {
   const assigned = job.assigned_employees;
   if (!Array.isArray(assigned)) return "";
@@ -357,7 +360,7 @@ function techFromHcp(job: Record<string, unknown>): string {
     const record = asRecord(employee);
     if (!record) continue;
     const name = [asString(record.first_name), asString(record.last_name)].filter(Boolean).join(" ");
-    if ((PRIMARY_TECHS as readonly string[]).includes(name)) return name;
+    if (HCP_TECH_NAMES.has(name)) return name;
   }
   return "";
 }

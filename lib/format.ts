@@ -82,6 +82,24 @@ export function wholeDaysSince(ms: number | null | undefined, now = Date.now()):
 }
 
 /**
+ * Whole days the shop has had the cart. Same number the Days column shows.
+ *
+ * Housecall Pro clock-in (`hcpWorkStartedAt`, from `work_timestamps.started_at`)
+ * is when work actually started. A null clock-in falls back to the scheduled
+ * start (`hcpScheduledStartAt`). A present but unusable clock-in (0) does not
+ * fall back — the column shows — for that case. Board `createdAt` is when the
+ * row was saved here, not when the shop took the cart, so it is not a source.
+ */
+export function daysSinceStarted(
+  hcpWorkStartedAt: number | null | undefined,
+  hcpScheduledStartAt: number | null | undefined,
+  now = Date.now(),
+): number | null {
+  const source = hcpWorkStartedAt == null ? hcpScheduledStartAt : hcpWorkStartedAt;
+  return wholeDaysSince(source, now);
+}
+
+/**
  * Main-board Days column. Whole days since the first Housecall Pro clock-in
  * (`hcpWorkStartedAt`). When that field is null, count from the previous
  * Date started value (`hcpScheduledStartAt`) instead.
@@ -91,8 +109,7 @@ export function displayDaysSinceStarted(
   hcpScheduledStartAt: number | null | undefined,
   now = Date.now(),
 ): string {
-  const source = hcpWorkStartedAt == null ? hcpScheduledStartAt : hcpWorkStartedAt;
-  const days = wholeDaysSince(source, now);
+  const days = daysSinceStarted(hcpWorkStartedAt, hcpScheduledStartAt, now);
   if (days == null) return "—";
   return String(days);
 }

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { displayDaysSinceStarted } from "./format.ts";
 import {
   compareJobNumbers,
   jobNumberParts,
+  sortJobsByDaysHeld,
   sortJobsByJobNumber,
 } from "./sort.ts";
 import { seedJobs } from "./jobs.ts";
@@ -54,5 +56,106 @@ describe("job number sort", () => {
       ["1842", "01842", "000"],
     );
     assert.equal(compareJobNumbers("01855", "1855"), 0);
+  });
+});
+
+describe("aging board order", () => {
+  const now = Date.parse("2026-10-16T15:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+
+  it("puts the cart the shop has had longest first, using the Days column count", () => {
+    const jobs = [
+      {
+        ...seedJobs[0],
+        id: "short",
+        jobNumber: "100",
+        hcpWorkStartedAt: now - 8 * day,
+        hcpScheduledStartAt: now - 30 * day,
+        createdAt: now - 100 * day,
+      },
+      {
+        ...seedJobs[0],
+        id: "long",
+        jobNumber: "900",
+        hcpWorkStartedAt: now - 40 * day,
+        hcpScheduledStartAt: now - day,
+        createdAt: now - day,
+      },
+      {
+        ...seedJobs[0],
+        id: "tie-high",
+        jobNumber: "18510",
+        hcpWorkStartedAt: now - 8 * day,
+        hcpScheduledStartAt: null,
+        createdAt: now,
+      },
+      {
+        ...seedJobs[0],
+        id: "tie-low",
+        jobNumber: "1842",
+        hcpWorkStartedAt: now - 8 * day,
+        hcpScheduledStartAt: null,
+        createdAt: now,
+      },
+      {
+        ...seedJobs[0],
+        id: "fallback",
+        jobNumber: "200",
+        hcpWorkStartedAt: null,
+        hcpScheduledStartAt: now - 12 * day,
+        createdAt: now,
+      },
+      {
+        ...seedJobs[0],
+        id: "future",
+        jobNumber: "1",
+        hcpWorkStartedAt: now + day,
+        hcpScheduledStartAt: now - 50 * day,
+        createdAt: now - 50 * day,
+      },
+      {
+        ...seedJobs[0],
+        id: "none",
+        jobNumber: "50",
+        hcpWorkStartedAt: null,
+        hcpScheduledStartAt: null,
+        createdAt: now - 100 * day,
+      },
+      {
+        ...seedJobs[0],
+        id: "zero-clock",
+        jobNumber: "10",
+        hcpWorkStartedAt: 0,
+        hcpScheduledStartAt: now - 20 * day,
+        createdAt: now - 20 * day,
+      },
+    ];
+    const sorted = sortJobsByDaysHeld(jobs, now);
+    assert.deepEqual(
+      sorted.map((job) => job.id),
+      ["long", "fallback", "short", "tie-low", "tie-high", "future", "zero-clock", "none"],
+    );
+    assert.deepEqual(
+      sorted.map((job) =>
+        displayDaysSinceStarted(job.hcpWorkStartedAt, job.hcpScheduledStartAt, now),
+      ),
+      ["40", "12", "8", "8", "8", "0", "—", "—"],
+    );
+  });
+
+  it("breaks an equal day count by job number, lowest first", () => {
+    const sameDay = now - 9 * day;
+    const sorted = sortJobsByDaysHeld(
+      [
+        { ...seedJobs[0], id: "b", jobNumber: "1842-1", hcpWorkStartedAt: sameDay },
+        { ...seedJobs[0], id: "c", jobNumber: "18510", hcpWorkStartedAt: sameDay },
+        { ...seedJobs[0], id: "a", jobNumber: "1842", hcpWorkStartedAt: sameDay },
+      ],
+      now,
+    );
+    assert.deepEqual(
+      sorted.map((job) => job.jobNumber),
+      ["1842", "1842-1", "18510"],
+    );
   });
 });
