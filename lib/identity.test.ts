@@ -92,14 +92,22 @@ describe("identity required", () => {
   it("keeps a former primary tech when loading a stored job", () => {
     const loaded = sanitizeLoadedJobs([
       { ...seedJobs[0], id: "legacy-ryan", primaryTech: "Ryan Gorgoglione" },
+      {
+        ...seedJobs[0],
+        id: "legacy-thomas",
+        jobNumber: "1902",
+        primaryTech: "Thomas Wilson",
+      },
     ]);
-    assert.equal(loaded.length, 1);
+    assert.equal(loaded.length, 2);
     assert.equal(loaded[0]?.primaryTech, "Ryan Gorgoglione");
+    assert.equal(loaded[1]?.primaryTech, "Thomas Wilson");
     assert.equal((PRIMARY_TECHS as readonly string[]).includes("Ryan Gorgoglione"), false);
+    assert.equal((PRIMARY_TECHS as readonly string[]).includes("Thomas Wilson"), false);
   });
 
-  it("offers Thomas Wilson on the roster and seeds only current techs", () => {
-    assert.deepEqual(PRIMARY_TECHS, ["Marlon Gray", "Thomas Wilson", "Hayden Silva"]);
+  it("offers only current field techs and seeds only those names", () => {
+    assert.deepEqual(PRIMARY_TECHS, ["Marlon Gray", "Hayden Silva"]);
     for (const job of seedJobs) {
       if (!job.primaryTech) continue;
       assert.equal((PRIMARY_TECHS as readonly string[]).includes(job.primaryTech), true);

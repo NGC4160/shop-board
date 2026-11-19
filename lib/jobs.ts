@@ -37,11 +37,7 @@ export const PIPELINE_STATUSES = [
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
 /** Live NGC Housecall Pro Field Techs (Settings → Team & Permissions). */
-export const PRIMARY_TECHS = [
-  "Marlon Gray",
-  "Thomas Wilson",
-  "Hayden Silva",
-] as const;
+export const PRIMARY_TECHS = ["Marlon Gray", "Hayden Silva"] as const;
 
 export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
 
@@ -49,7 +45,7 @@ export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
  * Former field techs. Still recognized on stored rows and Housecall Pro sync
  * so an existing assignment keeps its name. Not offered in the dropdown.
  */
-export const LEGACY_PRIMARY_TECHS = ["Ryan Gorgoglione"] as const;
+export const LEGACY_PRIMARY_TECHS = ["Ryan Gorgoglione", "Thomas Wilson"] as const;
 
 export const NEXT_ACTION_PRESETS = [
   "Call customer",
@@ -362,7 +358,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "DS",
     cartColor: "Red",
     bay: "Lot",
-    primaryTech: "Thomas Wilson",
+    primaryTech: "Marlon Gray",
     status: "Deposit Needed",
     nextAction: "Text Housecall Pro invoice",
     timeExpectation: "",
@@ -422,7 +418,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "Drive2",
     cartColor: "White",
     bay: "Outside",
-    primaryTech: "Thomas Wilson",
+    primaryTech: "Hayden Silva",
     status: "Awaiting Estimate",
     nextAction: "Call customer",
     timeExpectation: "",
@@ -482,7 +478,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "Tempo",
     cartColor: "Beige",
     bay: "Trailer",
-    primaryTech: "Thomas Wilson",
+    primaryTech: "Marlon Gray",
     status: "Scheduled",
     nextAction: "Confirm drop-off time",
     timeExpectation: SEED_PLUS_3,
