@@ -33,10 +33,10 @@ describe("mapHcpJob", () => {
     assert.equal(mapped?.schedulePresent, false);
   });
 
-  it("maps Thomas Wilson and still maps a former tech who is no longer selectable", () => {
-    assert.equal((PRIMARY_TECHS as readonly string[]).includes("Thomas Wilson"), true);
+  it("maps former techs who are no longer selectable", () => {
+    assert.equal((PRIMARY_TECHS as readonly string[]).includes("Thomas Wilson"), false);
     assert.equal((PRIMARY_TECHS as readonly string[]).includes("Ryan Gorgoglione"), false);
-    assert.deepEqual(LEGACY_PRIMARY_TECHS, ["Ryan Gorgoglione"]);
+    assert.deepEqual(LEGACY_PRIMARY_TECHS, ["Ryan Gorgoglione", "Thomas Wilson"]);
     const thomas = mapHcpJob({
       id: "tw",
       invoice_number: "1902",
@@ -174,7 +174,7 @@ describe("mergeHcpJobs", () => {
     assert.equal(jobs[0].primaryTech, "Ryan Gorgoglione");
   });
 
-  it("assigns Thomas Wilson on a new Housecall Pro row", () => {
+  it("keeps Thomas Wilson on a new Housecall Pro row assigned to him", () => {
     const mapped = mapHcpJob({
       id: "tw-new",
       invoice_number: "1902",

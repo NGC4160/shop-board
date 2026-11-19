@@ -70,12 +70,11 @@ The shop board at `/` shows only open jobs whose Housecall Pro clock-in, `work_t
 Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team & Permissions). Office Staff and other roles are not included.
 
 - Marlon Gray
-- Thomas Wilson
 - Hayden Silva
 
 Unassigned is allowed.
 
-**Ryan Gorgoglione** is no longer a choice. A job that already has `primaryTech` "Ryan Gorgoglione" — from the shared board or from a Housecall Pro sync that still assigns him — keeps that name on the row until someone reassigns it. Loading the board does not drop or error on that name. A Housecall Pro job assigned to Thomas Wilson maps to him.
+**Ryan Gorgoglione** and **Thomas Wilson** are no longer choices. A job that already has `primaryTech` "Ryan Gorgoglione" or "Thomas Wilson" — from the shared board or from a Housecall Pro sync that still assigns that name — keeps that name on the row until someone reassigns it. Loading the board does not drop or error on that name. The primary-tech control shows the stored name on that row and does not offer it for other rows.
 
 ## Statuses (Housecall Pro jobs pipeline)
 

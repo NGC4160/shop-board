@@ -76,10 +76,14 @@ describe("timeframe start-date filter", () => {
 
 describe("tech filter", () => {
   it("still matches a former tech who is no longer on the roster", () => {
-    const job = { ...seedJobs[0], primaryTech: "Ryan Gorgoglione", status: "In Progress" };
     const query = { search: "", chip: "all" as const, hideClosed: true };
-    assert.equal(jobMatches(job, { ...query, tech: "Ryan Gorgoglione" }), true);
-    assert.equal(jobMatches(job, { ...query, tech: "Thomas Wilson" }), false);
-    assert.equal(jobMatches(job, { ...query, tech: "", search: "gorgoglione" }), true);
+    const ryan = { ...seedJobs[0], primaryTech: "Ryan Gorgoglione", status: "In Progress" };
+    assert.equal(jobMatches(ryan, { ...query, tech: "Ryan Gorgoglione" }), true);
+    assert.equal(jobMatches(ryan, { ...query, tech: "Thomas Wilson" }), false);
+    assert.equal(jobMatches(ryan, { ...query, tech: "", search: "gorgoglione" }), true);
+    const thomas = { ...seedJobs[0], primaryTech: "Thomas Wilson", status: "In Progress" };
+    assert.equal(jobMatches(thomas, { ...query, tech: "Thomas Wilson" }), true);
+    assert.equal(jobMatches(thomas, { ...query, tech: "Marlon Gray" }), false);
+    assert.equal(jobMatches(thomas, { ...query, tech: "", search: "thomas wilson" }), true);
   });
 });
