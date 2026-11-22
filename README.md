@@ -225,7 +225,13 @@ The document is version 2: `parts` plus `inventory`. A v1 file with only `parts`
 
 On-hand stock is an `inventory` array in the **same** `ngc-parts-board.json` file, so a destination change and its stock link are one write. `GET /api/inventory` is open. Shop-floor edits use `PUT /api/inventory` (open, same updatedAt merge as parts; send `If-Match` with the document `updatedAt` for a 409 when that revision is stale). `POST` and `DELETE /api/inventory` use `Authorization: Bearer $PARTS_WRITE_TOKEN`. DELETE sets `deletedAt`; it does not drop the row.
 
-On any parts write, each line with `destinationType` Inventory that is not soft-deleted gets one inventory row keyed by `sourcePartLineId`. A new row copies the part description, vendor, and note (or the description when the note is empty), and leaves qty at 0 and part number, min qty, min order qty, and unit value blank. Later parts writes refresh the name, supplier, and description only. Qty, mins, unit value, and part number stay as inventory left them. Changing the line off Inventory, removing it, or soft-deleting it soft-deletes that link. One line maps to one item — mixed orders are not split here. The balance on the inventory page is qty × unit value, treating a blank unit value as 0.
+An inventory row is not owned by a parts line. Deleting, editing, or soft-deleting a parts line does not delete the row and does not reset qty, unit value, or description. A retired row stays retired.
+
+When a parts line is destined for Inventory and its status becomes Received or Checked in, that line is receipted once. Qty is the line’s positive `quantity` or `qty` when the Parts bot sent one, otherwise 1. That qty is added to the live row with the same link, or to the one live row with the same part number. If none matches, a new row is created. Saving that same parts line id again does not add qty a second time.
+
+Completed Housecall Pro jobs deduct on-hand qty. `/api/cron/sync-inventory` runs at 13:00, 18:00, and 23:00 UTC and only GETs jobs, material line items, and material job inputs. It does not write to Housecall Pro or QuickBooks. Match a row by exact part number or by **HCP material id** (`service_item_id`). The usage log’s deducted value is for a journal you draft by hand. Optional webhook: `HOUSECALL_PRO_WEBHOOK_SECRET` and `POST /api/webhooks/housecall-pro`. Optional `INVENTORY_USAGE_LOOKBACK_DAYS` (default 1, max 90) is how many days the first poll reads.
+
+The balance on the inventory page is qty × unit value, treating a blank unit value as 0. On-hand qty can go negative.
 
 Do not seed inventory from this app. Adding the live Inventory lines is a data step after deploy.
 

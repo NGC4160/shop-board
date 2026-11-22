@@ -68,13 +68,22 @@ export function InventoryTable({ items, onChange }: InventoryTableProps) {
                 <p className="text-base font-semibold">{item.partName || "—"}</p>
               </td>
               <td className="border-r border-b border-border px-1 py-1">
-                <TextField
-                  label="Part number"
-                  value={item.partNumber}
-                  placeholder="Part #"
-                  className="font-mono"
-                  onCommit={(partNumber) => onChange(item.id, { partNumber })}
-                />
+                <div className="grid gap-1">
+                  <TextField
+                    label="Part number"
+                    value={item.partNumber}
+                    placeholder="Part #"
+                    className="font-mono"
+                    onCommit={(partNumber) => onChange(item.id, { partNumber })}
+                  />
+                  <TextField
+                    label="HCP material id"
+                    value={item.hcpMaterialId ?? ""}
+                    placeholder="HCP material id"
+                    className="font-mono text-sm"
+                    onCommit={(hcpMaterialId) => onChange(item.id, { hcpMaterialId: hcpMaterialId || null })}
+                  />
+                </div>
               </td>
               <td className="border-b border-border px-2 py-2 text-base">{item.supplier || "—"}</td>
               <td className="border-b border-border px-2 py-2 text-base">{item.description || "—"}</td>
@@ -83,7 +92,8 @@ export function InventoryTable({ items, onChange }: InventoryTableProps) {
                   <QtyField
                     label="Qty on hand"
                     value={item.qtyOnHand}
-                    low={low}
+                    low={low || item.qtyOnHand < 0}
+                    allowNegative
                     onCommit={(qtyOnHand) => onChange(item.id, { qtyOnHand: qtyOnHand ?? 0 })}
                   />
                   {low ? (
@@ -188,12 +198,14 @@ function QtyField({
   label,
   value,
   allowBlank = false,
+  allowNegative = false,
   low = false,
   onCommit,
 }: {
   label: string;
   value: number | null;
   allowBlank?: boolean;
+  allowNegative?: boolean;
   low?: boolean;
   onCommit: (next: number | null) => void;
 }) {
@@ -218,7 +230,7 @@ function QtyField({
       return;
     }
     const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed) || parsed < 0) {
+    if (!Number.isFinite(parsed) || (!allowNegative && parsed < 0)) {
       setDraft(shown);
       return;
     }

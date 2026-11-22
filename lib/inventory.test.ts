@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { SAMPLE_PART_LINE, type PartLine } from "./parts.ts";
 import {
+  applyInventoryReceipts,
   inventoryBalance,
   inventoryLineValue,
   isLowStock,
-  syncInventoryFromParts,
   type InventoryItem,
 } from "./inventory.ts";
 
@@ -23,6 +23,7 @@ function stock(overrides: Partial<InventoryItem> = {}): InventoryItem {
   return {
     id: "inv-1",
     sourcePartLineId: "line-1",
+    hcpMaterialId: null,
     partName: "Example solenoid",
     partNumber: "PN-9",
     supplier: "Example Vendor",
@@ -37,134 +38,101 @@ function stock(overrides: Partial<InventoryItem> = {}): InventoryItem {
   };
 }
 
-describe("inventory sync", () => {
-  it("creates one item for an Inventory line and does not invent owned fields", () => {
-    const line = part({
-      id: "line-1",
-      destinationType: "Inventory",
-      destinationName: "",
-      customerName: "Inventory",
-      partDescription: "Example solenoid",
-      vendor: "Example Vendor",
-      note: "Shelf note",
-    });
-    const synced = syncInventoryFromParts([line], [], 50);
-    assert.equal(synced.length, 1);
-    const item = synced[0];
+function inventoryLine(overrides: Partial<ReturnType<typeof part>> = {}) {
+  return part({
+    id: "line-1",
+    destinationType: "Inventory",
+    destinationName: "",
+    customerName: "Inventory",
+    partDescription: "Example solenoid",
+    vendor: "Example Vendor",
+    note: "Shelf note",
+    status: "Checked in",
+    ...overrides,
+  });
+}
+
+describe("inventory receipts", () => {
+  it("creates one row when a new Inventory line is received and does not invent unit value", () => {
+    const line = inventoryLine();
+    const received = applyInventoryReceipts([], [line], [], [], 50);
+    assert.equal(received.inventory.length, 1);
+    const item = received.inventory[0];
     assert.ok(item);
     assert.equal(item.sourcePartLineId, "line-1");
     assert.equal(item.partName, "Example solenoid");
     assert.equal(item.supplier, "Example Vendor");
     assert.equal(item.description, "Shelf note");
-    assert.equal(item.qtyOnHand, 0);
+    assert.equal(item.qtyOnHand, 1);
     assert.equal(item.partNumber, "");
-    assert.equal(item.minQty, null);
-    assert.equal(item.minOrderQty, null);
     assert.equal(item.unitValue, null);
     assert.equal(item.deletedAt, null);
   });
 
   it("uses the part description when the note is empty", () => {
-    const line = part({
-      id: "line-1",
-      destinationType: "Inventory",
-      destinationName: "",
-      customerName: "Inventory",
-      partDescription: "Example cable",
-      note: "  ",
-    });
-    const synced = syncInventoryFromParts([line], [], 50);
-    assert.equal(synced[0]?.description, "Example cable");
+    const line = inventoryLine({ partDescription: "Example cable", note: "  " });
+    const received = applyInventoryReceipts([], [line], [], [], 50);
+    assert.equal(received.inventory[0]?.description, "Example cable");
   });
 
-  it("refreshes the link and preserves inventory-owned fields", () => {
-    const line = part({
-      id: "line-1",
-      destinationType: "Inventory",
-      destinationName: "",
-      customerName: "Inventory",
+  it("adds qty to a live row and does not rewrite description or unit value", () => {
+    const ordered = inventoryLine({ status: "Ordered" });
+    const received = inventoryLine({
+      status: "Checked in",
       partDescription: "Renamed solenoid",
       vendor: "Other Vendor",
       note: "Moved",
-    });
-    const synced = syncInventoryFromParts([line], [stock()], 80);
-    assert.equal(synced.length, 1);
-    const item = synced[0];
+      quantity: 3,
+    } as Partial<ReturnType<typeof part>>);
+    const result = applyInventoryReceipts([ordered], [received], [stock()], [], 80);
+    assert.equal(result.inventory.length, 1);
+    const item = result.inventory[0];
     assert.equal(item?.id, "inv-1");
-    assert.equal(item?.partName, "Renamed solenoid");
-    assert.equal(item?.supplier, "Other Vendor");
-    assert.equal(item?.description, "Moved");
-    assert.equal(item?.qtyOnHand, 6);
+    assert.equal(item?.partName, "Example solenoid");
+    assert.equal(item?.description, "Shelf note");
+    assert.equal(item?.qtyOnHand, 9);
     assert.equal(item?.partNumber, "PN-9");
-    assert.equal(item?.minQty, 2);
-    assert.equal(item?.minOrderQty, 4);
     assert.equal(item?.unitValue, 12.5);
     assert.equal(item?.deletedAt, null);
+    const again = applyInventoryReceipts([received], [received], result.inventory, result.receipts, 90);
+    assert.equal(again.inventory[0]?.qtyOnHand, 9);
   });
 
-  it("soft-deletes the link when the line leaves Inventory and restores it without resetting qty", () => {
+  it("keeps the row when the parts line is deleted or leaves Inventory", () => {
     const existing = stock();
+    const gone = applyInventoryReceipts([inventoryLine()], [], [existing], [], 110);
+    assert.equal(gone.inventory.length, 1);
+    assert.equal(gone.inventory[0]?.deletedAt, null);
+    assert.equal(gone.inventory[0]?.qtyOnHand, 6);
+    assert.equal(gone.inventory[0]?.unitValue, 12.5);
+
     const customer = part({
       id: "line-1",
       destinationType: "Customer",
       destinationName: "Pearson",
       customerName: "Pearson",
+      status: "Checked in",
     });
-    const removed = syncInventoryFromParts([customer], [existing], 90);
-    assert.equal(removed.length, 1);
-    assert.equal(removed[0]?.deletedAt, 90);
-    assert.equal(removed[0]?.qtyOnHand, 6);
-
-    const back = part({
-      id: "line-1",
-      destinationType: "Inventory",
-      destinationName: "",
-      customerName: "Inventory",
-      partDescription: "Example solenoid",
-      vendor: "Example Vendor",
-      note: "Shelf note",
-    });
-    const restored = syncInventoryFromParts([back], removed, 100);
-    assert.equal(restored.length, 1);
-    assert.equal(restored[0]?.deletedAt, null);
-    assert.equal(restored[0]?.qtyOnHand, 6);
-    assert.equal(restored[0]?.partNumber, "PN-9");
-    assert.equal(restored[0]?.unitValue, 12.5);
+    const edited = applyInventoryReceipts([inventoryLine()], [customer], [existing], [], 120);
+    assert.equal(edited.inventory[0]?.deletedAt, null);
+    assert.equal(edited.inventory[0]?.qtyOnHand, 6);
+    assert.equal(edited.inventory[0]?.description, "Shelf note");
   });
 
-  it("soft-deletes the link when the parts line is removed or soft-deleted", () => {
-    const existing = stock();
-    const gone = syncInventoryFromParts([], [existing], 110);
-    assert.equal(gone[0]?.deletedAt, 110);
+  it("does not recreate a retired row when the parts line is still Inventory", () => {
+    const retired = stock({ deletedAt: 40, qtyOnHand: 0, unitValue: 0 });
+    const line = inventoryLine();
+    const saved = applyInventoryReceipts([line], [line], [retired], [], 130);
+    assert.equal(saved.inventory.length, 1);
+    assert.equal(saved.inventory[0]?.id, "inv-1");
+    assert.equal(saved.inventory[0]?.deletedAt, 40);
+    assert.equal(saved.inventory[0]?.qtyOnHand, 0);
+    assert.equal(saved.inventory[0]?.unitValue, 0);
 
-    const deletedLine = part({
-      id: "line-1",
-      destinationType: "Inventory",
-      destinationName: "",
-      customerName: "Inventory",
-      deletedAt: 40,
-    });
-    const hidden = syncInventoryFromParts([deletedLine], [stock({ deletedAt: null })], 120);
-    assert.equal(hidden[0]?.deletedAt, 120);
-    assert.equal(hidden.length, 1);
-  });
-
-  it("does not split one parts line into more than one inventory item", () => {
-    const line = part({
-      id: "line-1",
-      destinationType: "Inventory",
-      destinationName: "",
-      customerName: "Inventory",
-      partDescription: "Two kits and a wheel",
-    });
-    const duplicate = stock({ id: "inv-older", updatedAt: 10, qtyOnHand: 1, partNumber: "OLD" });
-    const newer = stock({ id: "inv-newer", updatedAt: 20, qtyOnHand: 3, partNumber: "NEW" });
-    const synced = syncInventoryFromParts([line], [duplicate, newer], 130);
-    const linked = synced.filter((item) => item.sourcePartLineId === "line-1");
-    assert.equal(linked.length, 1);
-    assert.equal(linked[0]?.id, "inv-newer");
-    assert.equal(linked[0]?.qtyOnHand, 3);
-    assert.equal(linked[0]?.partNumber, "NEW");
+    const fresh = applyInventoryReceipts([], [line], [retired], [], 140);
+    assert.equal(fresh.inventory.length, 1);
+    assert.equal(fresh.inventory[0]?.deletedAt, 40);
+    assert.equal(fresh.receipts[0]?.skipped, true);
   });
 });
 

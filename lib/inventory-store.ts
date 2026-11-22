@@ -3,6 +3,8 @@ import {
   sanitizeLoadedInventory,
   type InventoryItem,
 } from "@/lib/inventory";
+import type { InventorySyncMeta } from "@/lib/inventory-hcp-sync";
+import type { InventoryFlag, InventoryUsage } from "@/lib/inventory-usage";
 import {
   emptySharedPartsDocument,
   parseSharedPartsDocument,
@@ -11,6 +13,9 @@ import {
 
 export type InventorySnapshot = {
   items: InventoryItem[];
+  usage: InventoryUsage[];
+  flags: InventoryFlag[];
+  sync: InventorySyncMeta | null;
   updatedAt: number | null;
 };
 
@@ -20,6 +25,9 @@ const listeners = new Set<StoreListener>();
 
 let snapshot: InventorySnapshot = {
   items: [],
+  usage: [],
+  flags: [],
+  sync: null,
   updatedAt: null,
 };
 let hydrated = false;
@@ -70,6 +78,9 @@ export function getInventorySnapshot(): InventorySnapshot {
 
 const serverSnapshot: InventorySnapshot = {
   items: [],
+  usage: [],
+  flags: [],
+  sync: null,
   updatedAt: null,
 };
 
@@ -84,17 +95,14 @@ export function exportSharedInventoryPayload(): {
   return { inventory: snapshot.items, updatedAt: acknowledgedUpdatedAt };
 }
 
-export function applySharedInventorySnapshot(
-  shared: Partial<Pick<SharedPartsDocument, "parts" | "inventory" | "updatedAt">>,
-) {
-  const parsed = parseSharedPartsDocument({
-    parts: shared.parts ?? [],
-    inventory: shared.inventory ?? [],
-    updatedAt: shared.updatedAt,
-  });
+export function applySharedInventorySnapshot(shared: unknown) {
+  const parsed = parseSharedPartsDocument(shared);
   if (!parsed) return false;
   snapshot = {
     items: parsed.inventory,
+    usage: parsed.inventoryUsage,
+    flags: parsed.inventoryFlags,
+    sync: parsed.inventorySync,
     updatedAt: parsed.updatedAt,
   };
   acknowledgedUpdatedAt = parsed.updatedAt;
@@ -148,7 +156,13 @@ async function pushSharedInventory(): Promise<SharedPartsDocument | null> {
     if (!response.ok || !body) return null;
     const parsed = parseSharedPartsDocument(body);
     if (parsed) {
-      snapshot = { items: parsed.inventory, updatedAt: parsed.updatedAt };
+      snapshot = {
+        items: parsed.inventory,
+        usage: parsed.inventoryUsage,
+        flags: parsed.inventoryFlags,
+        sync: parsed.inventorySync,
+        updatedAt: parsed.updatedAt,
+      };
       acknowledgedUpdatedAt = parsed.updatedAt;
       dirty = false;
     }
@@ -230,7 +244,7 @@ export function resetInventoryStoreForTests() {
   const win = getWindow();
   if (win && sharedPushTimer != null) win.clearTimeout(sharedPushTimer);
   sharedPushTimer = null;
-  snapshot = { items: [], updatedAt: null };
+  snapshot = { items: [], usage: [], flags: [], sync: null, updatedAt: null };
   acknowledgedUpdatedAt = null;
   dirty = false;
   sharedConfigured = true;
@@ -240,6 +254,7 @@ export function resetInventoryStoreForTests() {
 
 export function replaceInventory(items: InventoryItem[]) {
   commit({
+    ...snapshot,
     items: sanitizeLoadedInventory(items),
     updatedAt: Date.now(),
   });
@@ -250,6 +265,7 @@ export function updateInventoryItem(id: string, patch: Partial<InventoryItem>): 
   if (!current || current.deletedAt != null) return false;
   const next = mergeInventoryItem(current, patch);
   commit({
+    ...snapshot,
     items: snapshot.items.map((item) => (item.id === id ? next : item)),
     updatedAt: next.updatedAt,
   });

@@ -391,7 +391,9 @@ export function upsertPartLine(
   } else if (!existing) {
     return { ok: false, error: "Destination name is required" };
   }
-  const line = mergePartLine(existing, { ...fields, deletedAt: null }, now);
+  const merged = mergePartLine(existing, { ...fields, deletedAt: null }, now);
+  const extras = incoming && typeof incoming === "object" ? lineExtras(incoming) : {};
+  const line = { ...merged, ...extras, deletedAt: null as number | null };
   if (!existing) {
     return { ok: true, parts: [...parts, line], line };
   }
