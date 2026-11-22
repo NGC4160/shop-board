@@ -3,10 +3,16 @@ import {
   emptyPartLine,
   isBlankPartDraft,
   mergePartLine,
+  partDescriptionError,
   sanitizeLoadedParts,
   type PartLine,
 } from "@/lib/parts";
 import { stableStringify, threeWayMergeById } from "@/lib/document-merge";
+import {
+  customerNameForDestination,
+  deriveDestinationFromCustomerName,
+  destinationError,
+} from "@/lib/validate-parts";
 import {
   emptySharedPartsDocument,
   parseSharedPartsDocument,
@@ -308,8 +314,19 @@ export function replaceParts(parts: PartLine[], remember = false) {
 }
 
 export function insertPart(part: PartLine): boolean {
-  if (!part.customerName.trim() || !part.partDescription.trim()) return false;
-  const next = mergePartLine(null, { ...part, id: part.id || createPartId() });
+  let candidate = part;
+  if (destinationError(part.destinationType, part.destinationName) && part.customerName.trim()) {
+    const derived = deriveDestinationFromCustomerName(part.customerName);
+    candidate = {
+      ...part,
+      destinationType: derived.destinationType,
+      destinationName: derived.destinationName,
+      customerName: customerNameForDestination(derived.destinationType, derived.destinationName),
+    };
+  }
+  if (destinationError(candidate.destinationType, candidate.destinationName)) return false;
+  if (partDescriptionError(candidate.partDescription)) return false;
+  const next = mergePartLine(null, { ...candidate, id: candidate.id || createPartId() });
   commit({
     parts: [next, ...snapshot.parts.filter((item) => item.id !== next.id)],
     updatedAt: next.updatedAt,
@@ -321,6 +338,7 @@ export function updatePart(id: string, patch: Partial<PartLine>): boolean {
   const current = snapshot.parts.find((item) => item.id === id);
   if (!current) return false;
   const next = mergePartLine(current, patch);
+  if (destinationError(next.destinationType, next.destinationName)) return false;
   commit({
     parts: snapshot.parts.map((item) => (item.id === id ? next : item)),
     updatedAt: next.updatedAt,

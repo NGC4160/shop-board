@@ -1,3 +1,4 @@
+import { daysSinceStarted } from "@/lib/format";
 import { isIsoDate, jobNumberError, normalizeJobNumber, type CartJob } from "@/lib/jobs";
 
 export function compareText(a: string, b: string): number {
@@ -131,12 +132,30 @@ export function compareJobsByNumber(a: CartJob, b: CartJob): number {
   return a.id.localeCompare(b.id);
 }
 
-/** Board order is Housecall Pro job number only, lowest first. */
+/** Board order used to be job number only. Kept for callers that still want that order. */
 export function sortJobsByJobNumber(jobs: CartJob[]): CartJob[] {
   return [...jobs].sort(compareJobsByNumber);
 }
 
-/** @deprecated Use sortJobsByJobNumber — the board no longer has multi-column sort. */
-export function sortJobsBy(jobs: CartJob[]): CartJob[] {
-  return sortJobsByJobNumber(jobs);
+/**
+ * Aging Carts order: longest time in the shop first.
+ * The day count is `daysSinceStarted` — the same integer the Days column shows.
+ * Missing counts sort last. Equal counts break by job number, lowest first.
+ */
+export function compareJobsByDaysHeld(a: CartJob, b: CartJob, now = Date.now()): number {
+  const left = daysSinceStarted(a.hcpWorkStartedAt, a.hcpScheduledStartAt, now);
+  const right = daysSinceStarted(b.hcpWorkStartedAt, b.hcpScheduledStartAt, now);
+  const leftDays = left ?? Number.NEGATIVE_INFINITY;
+  const rightDays = right ?? Number.NEGATIVE_INFINITY;
+  if (leftDays !== rightDays) return rightDays - leftDays;
+  return compareJobsByNumber(a, b);
+}
+
+export function sortJobsByDaysHeld(jobs: readonly CartJob[], now = Date.now()): CartJob[] {
+  return [...jobs].sort((a, b) => compareJobsByDaysHeld(a, b, now));
+}
+
+/** @deprecated Use sortJobsByDaysHeld — Aging Carts sorts by days in the shop. */
+export function sortJobsBy(jobs: CartJob[], now = Date.now()): CartJob[] {
+  return sortJobsByDaysHeld(jobs, now);
 }

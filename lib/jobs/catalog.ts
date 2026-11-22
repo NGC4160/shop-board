@@ -35,13 +35,15 @@ export const PIPELINE_STATUSES = [
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
 /** Live NGC Housecall Pro Field Techs (Settings → Team & Permissions). */
-export const PRIMARY_TECHS = [
-  "Marlon Gray",
-  "Ryan Gorgoglione",
-  "Hayden Silva",
-] as const;
+export const PRIMARY_TECHS = ["Marlon Gray", "Hayden Silva"] as const;
 
 export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
+
+/**
+ * Former field techs. Still recognized on stored rows and Housecall Pro sync
+ * so an existing assignment keeps its name. Not offered in the dropdown.
+ */
+export const LEGACY_PRIMARY_TECHS = ["Ryan Gorgoglione", "Thomas Wilson"] as const;
 
 export const NEXT_ACTION_PRESETS = [
   "Call customer",

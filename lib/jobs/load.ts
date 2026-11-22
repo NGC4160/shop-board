@@ -68,6 +68,7 @@ export function upgradeJob(value: unknown): CartJob | null {
       now,
     ),
     hcpScheduledStartAt: parseStoredHcpScheduledStartAt(job.hcpScheduledStartAt),
+    hcpWorkStartedAt: parseStoredHcpScheduledStartAt(job.hcpWorkStartedAt),
     deletedAt: readDeletedAt(job.deletedAt),
   };
 }

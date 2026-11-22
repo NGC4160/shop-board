@@ -14,7 +14,7 @@ import {
 import { CartMark } from "@/components/shop/cart-mark";
 import { formatClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { sortJobsByJobNumber } from "@/lib/sort";
+import { sortJobsByDaysHeld } from "@/lib/sort";
 import { useEffect, useMemo, useState } from "react";
 
 const WALL_STATUSES = PIPELINE_STATUSES.filter(
@@ -36,7 +36,10 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
 
   const groups = WALL_STATUSES.map((status) => ({
     status,
-    jobs: sortJobsByJobNumber(openJobs.filter((job) => job.status === status)),
+    jobs: sortJobsByDaysHeld(
+      openJobs.filter((job) => job.status === status),
+      now,
+    ),
   })).filter((group) => group.jobs.length > 0);
 
   return (
@@ -48,7 +51,7 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
             <p className="font-display text-xs font-semibold tracking-[0.22em] text-accent uppercase">
               Neighborhood Golf Carts · Covington
             </p>
-            <h1 className="font-display text-4xl font-semibold tracking-tight">Shop Board</h1>
+            <h1 className="font-display text-4xl font-semibold tracking-tight">Aging Carts</h1>
           </div>
         </div>
         <div className="text-right">

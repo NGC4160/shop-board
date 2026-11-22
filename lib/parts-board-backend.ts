@@ -4,11 +4,14 @@ import {
   parseSharedPartsDocument,
   type SharedPartsDocument,
 } from "@/lib/parts-board";
-import { backupPriorDocument } from "@/lib/document-backup";
-import { StoreRaceError, createWriteLock } from "@/lib/store-lock";
+import { backupPriorDocument as backupDocumentHistory } from "@/lib/document-backup";
+import { StoreRaceError } from "@/lib/store-lock";
 
 /** Separate Blob object from the job board (`ngc-shop-board.json`). */
 export const SHARED_PARTS_BLOB_PATH = "ngc-parts-board.json";
+
+/** Rolling copy of the document from before the latest save. One object, not a history. */
+export const SHARED_PARTS_PRIOR_BLOB_PATH = "ngc-parts-board.prior.json";
 
 function hasBlobToken() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
@@ -25,6 +28,10 @@ export function isPartsStoreConfigured() {
 
 function filePath() {
   return path.join(process.cwd(), ".data", SHARED_PARTS_BLOB_PATH);
+}
+
+function priorFilePath() {
+  return path.join(process.cwd(), ".data", SHARED_PARTS_PRIOR_BLOB_PATH);
 }
 
 async function readFileStore(): Promise<SharedPartsDocument | null> {
@@ -86,11 +93,53 @@ async function writeBlobStore(doc: SharedPartsDocument, etag: string | null): Pr
   }
 }
 
+function contentKey(doc: SharedPartsDocument | null): string {
+  if (!doc) return "";
+  const { updatedAt: _ignored, ...rest } = doc;
+  void _ignored;
+  return JSON.stringify(rest);
+}
+
+/** One rolling copy of the document about to be replaced (`ngc-parts-board.prior.json`). */
+async function backupLatestPrior(current: SharedPartsDocument | null): Promise<void> {
+  if (!current) return;
+  const body = JSON.stringify(current);
+  if (shouldUseFileStore()) {
+    const dest = priorFilePath();
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, body, "utf8");
+    return;
+  }
+  const { put } = await import("@vercel/blob");
+  await put(SHARED_PARTS_PRIOR_BLOB_PATH, body, {
+    access: "private",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json",
+  });
+}
+
 async function readFresh(): Promise<{ doc: SharedPartsDocument | null; etag: string | null }> {
   if (shouldUseFileStore()) return { doc: await readFileStore(), etag: null };
   const loaded = await readBlobStore();
   cached = { doc: loaded.doc, at: Date.now() };
   return loaded;
+}
+
+let mutationTail: Promise<void> = Promise.resolve();
+
+/**
+ * Serialize parts and inventory mutations in this instance. Both write
+ * `ngc-parts-board.json`, so a qty edit and a destination edit must not
+ * read-modify-write over each other.
+ */
+export function enqueuePartsMutation<T>(task: () => Promise<T>): Promise<T> {
+  const run = mutationTail.then(task, task);
+  mutationTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 export async function readSharedParts(): Promise<SharedPartsDocument | null> {
@@ -115,30 +164,45 @@ export type PartsMutation<T> =
   | { type: "conflict"; current: T | null }
   | { type: "error"; status: number; error: string };
 
-const enqueuePartsWrite = createWriteLock();
+async function commitPartsDocument(
+  current: SharedPartsDocument | null,
+  doc: SharedPartsDocument,
+  etag: string | null,
+): Promise<void> {
+  if (current && contentKey(current) === contentKey(doc)) {
+    cached = { doc: current, at: Date.now() };
+    return;
+  }
+  if (current) {
+    await backupLatestPrior(current);
+    await backupDocumentHistory(
+      "ngc-parts-board",
+      current,
+      shouldUseFileStore() ? "file" : "blob",
+    );
+  }
+  if (shouldUseFileStore()) await writeFileStore(doc);
+  else await writeBlobStore(doc, etag);
+  cached = { doc, at: Date.now() };
+}
 
-/** Read the live parts document and write inside one queue. */
+/** Read the live parts document and write inside the parts queue. */
 export async function mutateSharedParts(
   mutate: (
     current: SharedPartsDocument | null,
   ) => PartsMutation<SharedPartsDocument> | Promise<PartsMutation<SharedPartsDocument>>,
 ): Promise<PartsMutation<SharedPartsDocument>> {
-  return enqueuePartsWrite(async () => {
+  return enqueuePartsMutation(async () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const loaded = await readFresh();
       const decision = await mutate(loaded.doc);
       if (decision.type !== "write") return decision;
-      if (loaded.doc) {
-        await backupPriorDocument(
-          "ngc-parts-board",
-          loaded.doc,
-          shouldUseFileStore() ? "file" : "blob",
-        );
-      }
       try {
-        if (shouldUseFileStore()) await writeFileStore(decision.doc);
-        else await writeBlobStore(decision.doc, loaded.etag);
-        cached = { doc: decision.doc, at: Date.now() };
+        if (loaded.doc && contentKey(loaded.doc) === contentKey(decision.doc)) {
+          cached = { doc: loaded.doc, at: Date.now() };
+          return { type: "keep" as const, doc: loaded.doc };
+        }
+        await commitPartsDocument(loaded.doc, decision.doc, loaded.etag);
         return decision;
       } catch (error) {
         if (error instanceof StoreRaceError && attempt === 0) continue;
@@ -150,6 +214,11 @@ export async function mutateSharedParts(
   });
 }
 
+/**
+ * Write a document that was already read inside `enqueuePartsMutation`.
+ * Does not take the queue again — inventory routes already hold it.
+ */
 export async function writeSharedParts(doc: SharedPartsDocument): Promise<void> {
-  await mutateSharedParts(() => ({ type: "write", doc }));
+  const current = shouldUseFileStore() ? await readFileStore() : (cached?.doc ?? (await readBlobStore()).doc);
+  await commitPartsDocument(current, doc, null);
 }

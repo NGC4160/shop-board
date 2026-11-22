@@ -10,10 +10,10 @@ Merging to `main` updates that live URL. Do not attach this repo to the CartScop
 
 This is a **shop-floor spreadsheet**, not a kanban and not CartScope.
 
-One dense table on one page. Rows are jobs. Columns are these fields, in this order, always sorted by job number ascending:
+One dense table on one page. Rows are jobs. Columns are these fields, in this order. The sheet is sorted by how long the shop has had the cart, longest first (the **Days** column). An equal day count breaks by job number, lowest first.
 
-1. **#** (sequential board row 1–n)
-2. **Date started** (Housecall Pro `schedule.scheduled_start`, America/Chicago; dash when missing or Unscheduled — never invented)
+1. **#** (sequential board row 1–n in that order)
+2. **Days** (whole days since the Housecall Pro clock-in, `work_timestamps.started_at`. If that clock-in is missing, whole days since `schedule.scheduled_start`. Dash when neither is usable. This number is the sort key. The board’s `createdAt` is not used.)
 3. **Customer name**
 4. **Job number**
 5. **Primary tech**
@@ -23,7 +23,8 @@ One dense table on one page. Rows are jobs. Columns are these fields, in this or
 
 Every floor field edits **inline**. There is no fat top chrome (no Add cart button, toolbar, stats cards, search, or chip filters), no cart / bay / notes / phone columns, and no details drawer. The thin top bar has **Timeframe** (board-level date filter) and **Sync**. New carts normally arrive from Housecall Pro morning sync. Press `N` to add one locally — it asks for customer + job # first; the row appears on the sheet only after both are valid.
 
-- **Parts board** at `/parts` — incoming parts and who they are for (separate shared store from jobs)
+- **Parts board** at `/parts` — incoming parts and where they are going (separate shared store from jobs)
+- **Inventory** at `/inventory` — on-hand stock stored in that same parts document
 - **Wall display** at `/wall` for the shop TV (read-only grouping by stage — not an editing board)
 - **Keyboard:** `N` add cart locally, `Esc` abandon a blank add
 - **Timeframe filter** (calendar date picker in the thin top bar) shows only jobs whose **Date started** is that America/Chicago day. Jobs without a start date (`—`, Unscheduled, or missing `schedule.scheduled_start`) are hidden while the filter is on. Clear the date to see the full board again. The per-row **Timeframe** column is still a local promised date and does not filter the list.
@@ -36,7 +37,7 @@ Customer name and job number are required. Empty or whitespace-only values show 
 
 Primary tech and Current Status are native `<select>` controls (OS picker on iOS/Android — they do not open the soft keyboard). Each list still ends with **Other…**, which is the only path that shows a text field. Status options are the full Housecall Pro pipeline; Primary tech is Field Techs + Unassigned.
 
-Rows are **always sorted by Housecall Pro job number**, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status.
+Rows are **sorted by days the shop has had the cart**, longest first. That is the same whole-day count as the **Days** column: Housecall Pro clock-in (`work_timestamps.started_at` / `hcpWorkStartedAt`), or `schedule.scheduled_start` when the clock-in is missing. Carts with no usable date sort last. Equal counts break by job number, lowest first (numeric-aware: 1842 before 18510). There is no sort-by-customer / tech / status. The wall display uses the same order inside each stage.
 
 ## Customer names from Housecall Pro
 
@@ -60,15 +61,20 @@ Live `GET /jobs?page=&page_size=` includes `schedule` on each Job — no `expand
 
 **Expected dash (local seeds, not HCP):** Mike Landry / `1842` / In Progress and The Landing HOA / `1839` are `seed-1842` / `seed-1839` in `lib/jobs.ts`. They are first-load demo rows (`hcpScheduledStartAt: null`). Live open HCP jobs do not include `1842` or `1839` (current NGC invoices are 6-digit, plus older real jobs like `645`). Sync keeps those local-only seeds and does **not** invent a Date started from `created_at`. `—` on those rows is correct.
 
+## Main board list
+
+The shop board at `/` shows only open jobs whose Housecall Pro clock-in, `work_timestamps.started_at`, is more than 7 days ago. Sync stores that instant as `hcpWorkStartedAt` and leaves it null when the field is missing. Schedule start, `created_at`, and the board’s `createdAt` are not used for this filter, so a job with no clock-in is hidden. Visible rows are ordered by that same clock-in (longest first), not by job number. `/parts`, `/wall`, and the board APIs still return the full list. The wall still shows every open stage, with the longest-held cart first inside each stage.
+
 ## Primary tech
 
 Dropdown of NGC **Field Tech** names from live Housecall Pro (Settings → Team & Permissions). Office Staff and other roles are not included.
 
 - Marlon Gray
-- Ryan Gorgoglione
 - Hayden Silva
 
 Unassigned is allowed.
+
+**Ryan Gorgoglione** and **Thomas Wilson** are no longer choices. A job that already has `primaryTech` "Ryan Gorgoglione" or "Thomas Wilson" — from the shared board or from a Housecall Pro sync that still assigns that name — keeps that name on the row until someone reassigns it. Loading the board does not drop or error on that name. The primary-tech control shows the stored name on that row and does not offer it for other rows.
 
 ## Statuses (Housecall Pro jobs pipeline)
 
@@ -168,13 +174,17 @@ That copies the backup onto `.data/ngc-shop-board.json` or `.data/ngc-parts-boar
 3. Open the same URL in browser profile B (or another device). Refresh, or tap **Sync**.
 4. Profile B should show the same board-only edit. Housecall Pro jobs/status/schedule still update from Sync as before.
 
+The top of each sheet switches **Aging** (`/`), **Parts** (`/parts`), and **Inventory** (`/inventory`). `/` is still the aging-carts spreadsheet.
+
 ## Parts board (`/parts`)
 
-A second shop-floor sheet for **incoming parts** — not mixed into the job columns. Ryan and Jesse open `/parts` on any phone or computer and see the same list: who a line is for, job # when known, part, vendor, status, carrier/tracking, expected date, and a short note.
+A shop-floor sheet for **incoming parts** — not mixed into the job columns. Ryan and Jesse open `/parts` on any phone or computer and see the same list: destination (Inventory, Customer, or Other), job # when known, part, vendor, status, carrier/tracking, expected date, and a short note.
 
 Parts live in a **separate** shared Blob file (`ngc-parts-board.json`). Editing a part cannot change a job card. `localStorage` is not the source of truth for parts.
 
-Statuses: **Ordered**, **Shipped**, **Out for delivery**, **Received**, **Checked in**, **Problem**. Filter by status and search by customer or job #. Tracking numbers link to USPS, UPS, or FedEx when a number is present. Marking a line **Checked in** does not delete it — the Parts process removes that id on its next regular update.
+Statuses: **Ordered**, **Shipped**, **Out for delivery**, **Received**, **Checked in**, **Problem**. Filter by status and search by destination or job #. Tracking numbers link to USPS, UPS, or FedEx when a number is present. Marking a line **Checked in** does not delete it — the Parts process removes that id on its next regular update.
+
+**Destination** replaces the old Customer column. `destinationType` is `Inventory`, `Customer`, or `Other`. Customer and Other require `destinationName`. Inventory requires that name to be empty. A line still stores legacy `customerName` so an older Parts process keeps working. When a saved line has no destination fields, load maps `customerName`: exact `Inventory` becomes Inventory; `Shop cart` and `Shop display` become Other plus that name; a value starting with `TBD` becomes Other plus the original text; `Kane & Inventory` becomes Other plus the original text (one line — it is not split); anything else becomes Customer plus the name. POST and PUT still accept `customerName` alone and use that same map. An explicit `destinationType` is validated and is not rewritten from `customerName`.
 
 The board starts empty (no invented customers or tracking numbers). Press `N` or **Add** to put a line on the shared sheet. The Parts process can also upsert by a stable `id`:
 
@@ -207,7 +217,17 @@ curl -X DELETE https://ngc-shop-board.vercel.app/api/parts \
   -d '{"id":"po-1001-line-1"}'
 ```
 
-Local `next dev` uses `.data/ngc-parts-board.json` (gitignored), next to the job-board file.
+Local `next dev` uses `.data/ngc-parts-board.json` (gitignored), next to the job-board file. Each save first copies the previous document to `.data/ngc-parts-board.prior.json` (Blob path `ngc-parts-board.prior.json`).
+
+The document is version 2: `parts` plus `inventory`. A v1 file with only `parts` still loads. A parts PUT that omits `inventory` does not clear stock. Unknown keys on the document and on each line are kept.
+
+### Inventory (`/inventory`)
+
+On-hand stock is an `inventory` array in the **same** `ngc-parts-board.json` file, so a destination change and its stock link are one write. `GET /api/inventory` is open. Shop-floor edits use `PUT /api/inventory` (open, same updatedAt merge as parts; send `If-Match` with the document `updatedAt` for a 409 when that revision is stale). `POST` and `DELETE /api/inventory` use `Authorization: Bearer $PARTS_WRITE_TOKEN`. DELETE sets `deletedAt`; it does not drop the row.
+
+On any parts write, each line with `destinationType` Inventory that is not soft-deleted gets one inventory row keyed by `sourcePartLineId`. A new row copies the part description, vendor, and note (or the description when the note is empty), and leaves qty at 0 and part number, min qty, min order qty, and unit value blank. Later parts writes refresh the name, supplier, and description only. Qty, mins, unit value, and part number stay as inventory left them. Changing the line off Inventory, removing it, or soft-deleting it soft-deletes that link. One line maps to one item — mixed orders are not split here. The balance on the inventory page is qty × unit value, treating a blank unit value as 0.
+
+Do not seed inventory from this app. Adding the live Inventory lines is a data step after deploy.
 
 ### Required Vercel environment variables
 
@@ -218,7 +238,7 @@ Set these on the **ngc-shop-board** project (Production). See `.env.example`.
 | `HOUSECALL_PRO_API_KEY` | Yes, for live sync | Housecall Pro API key (Admin → My Apps → API Key Management). Prefer **read-only**. `HCP_API_KEY` is accepted as an alias. |
 | `BLOB_READ_WRITE_TOKEN` | Yes, for shared storage | Injected when you create a **Vercel Blob** store and connect it to this project. Without it, Production cannot persist board-only fields across devices (`localStorage` still works per browser). |
 | `CRON_SECRET` | Recommended | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route. Without it, only Vercel’s cron user-agent (or local `next dev`) can call the stub. |
-| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id` (and clears `deletedAt` if that line was hidden). `DELETE /api/parts` soft-deletes one line by that same `id`. Never commit this value. `GET /api/parts` stays open like the job board. Shop-floor edits on `/parts` use `PUT /api/parts` (open, same as jobs — not this token) and must send the document `revision`. A stale PUT gets **409** instead of replacing the list. |
+| `PARTS_WRITE_TOKEN` | Yes, for the Parts process write API | Long random secret. `POST /api/parts` upserts one part line by a stable `id` (and clears `deletedAt` if that line was hidden). `DELETE /api/parts` soft-deletes one line by that same `id`. The same token gates `POST` and `DELETE /api/inventory`. Never commit this value. `GET /api/parts` and `GET /api/inventory` stay open like the job board. Shop-floor edits use `PUT /api/parts` and `PUT /api/inventory` (open, same as jobs — not this token) and write one Blob file (`ngc-parts-board.json`). `PUT /api/parts` must send the document `revision`. A stale PUT gets **409** instead of replacing the list. |
 
 Create the Blob store: Vercel project **ngc-shop-board** → Storage → Create Database → Blob → connect to this project (Production + Preview). Redeploy after the token appears.
 
@@ -237,7 +257,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Parts board: [http://localhost:3000/parts](http://localhost:3000/parts). Wall display: [http://localhost:3000/wall](http://localhost:3000/wall).
+Open [http://localhost:3000](http://localhost:3000) (Aging Carts). Parts board: [http://localhost:3000/parts](http://localhost:3000/parts). Inventory: [http://localhost:3000/inventory](http://localhost:3000/inventory). Wall display: [http://localhost:3000/wall](http://localhost:3000/wall).
 
 ```bash
 npm run build

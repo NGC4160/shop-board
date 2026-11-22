@@ -30,6 +30,8 @@ export type CartJob = {
   statusChangedAt: number;
   /** Housecall Pro `schedule.scheduled_start`. Null when unknown — never invented. */
   hcpScheduledStartAt: number | null;
+  /** Housecall Pro `work_timestamps.started_at`. Null when absent — never invented. */
+  hcpWorkStartedAt: number | null;
   /** Set when the row is removed from the board. Null means the row is live. */
   deletedAt: number | null;
 };

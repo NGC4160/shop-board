@@ -26,6 +26,7 @@ function seed(
     | "updatedAt"
     | "statusChangedAt"
     | "hcpScheduledStartAt"
+    | "hcpWorkStartedAt"
     | "deletedAt"
   > & {
     daysAgo: number;
@@ -55,6 +56,7 @@ function seed(
     updatedAt: statusChangedAt,
     statusChangedAt,
     hcpScheduledStartAt: null,
+    hcpWorkStartedAt: null,
     deletedAt: null,
     history: [
       { at: createdAt, kind: "created", text: "Added to the board" },
@@ -158,7 +160,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "DS",
     cartColor: "Red",
     bay: "Lot",
-    primaryTech: "Ryan Gorgoglione",
+    primaryTech: "Marlon Gray",
     status: "Deposit Needed",
     nextAction: "Text Housecall Pro invoice",
     timeExpectation: "",
@@ -218,7 +220,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "Drive2",
     cartColor: "White",
     bay: "Outside",
-    primaryTech: "Ryan Gorgoglione",
+    primaryTech: "Hayden Silva",
     status: "Awaiting Estimate",
     nextAction: "Call customer",
     timeExpectation: "",
@@ -278,7 +280,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "Tempo",
     cartColor: "Beige",
     bay: "Trailer",
-    primaryTech: "Ryan Gorgoglione",
+    primaryTech: "Marlon Gray",
     status: "Scheduled",
     nextAction: "Confirm drop-off time",
     timeExpectation: SEED_PLUS_3,

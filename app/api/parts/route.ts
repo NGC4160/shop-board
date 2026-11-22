@@ -5,7 +5,7 @@ import { validatePartUpsertFields } from "@/lib/validate-parts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
-  toSharedPartsDocument,
+  replacePartsLines,
 } from "@/lib/parts-board";
 import {
   isPartsStoreConfigured,
@@ -181,29 +181,30 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
+  const fieldError = validatePartUpsertFields(body);
+  if (fieldError) return json({ ok: false, error: fieldError }, 400);
+
   try {
-    const fieldError = validatePartUpsertFields(body);
-    if (fieldError) return json({ ok: false, error: fieldError }, 400);
     const decision = await mutateSharedParts((current) => {
       const base = current ?? emptySharedPartsDocument(0, 0);
       const result = upsertPartLine(base.parts, body);
       if (!result.ok) return { type: "error" as const, status: 400, error: result.error };
       return {
         type: "write" as const,
-        doc: toSharedPartsDocument({ parts: result.parts }, Date.now(), base.revision + 1),
+        doc: replacePartsLines(base, result.parts, Date.now()),
         upserted: result.line,
       };
     });
     if (decision.type === "error") return json({ ok: false, error: decision.error }, decision.status);
-    if (decision.type !== "write") {
+    if (decision.type !== "write" && decision.type !== "keep") {
       return json({ ok: false, error: "Shared parts store could not be written" }, 502);
     }
     return json({
       ok: true,
       empty: decision.doc.parts.length === 0,
       configured: true,
-      wrote: true,
-      upserted: decision.upserted,
+      wrote: decision.type === "write",
+      upserted: decision.type === "write" ? decision.upserted : undefined,
       ...decision.doc,
     });
   } catch (error) {
@@ -222,7 +223,7 @@ export async function POST(request: Request) {
 /**
  * Token-gated remove for the Parts process (same Bearer token as POST).
  * Authorization: Bearer $PARTS_WRITE_TOKEN
- * Target: `?id=` or JSON `{ "id": "…" }`. Removes that line only.
+ * Target: `?id=` or JSON `{ "id": "…" }`. Soft-deletes that line only.
  */
 export async function DELETE(request: Request) {
   const denied = partsWriteUnauthorized(request);
@@ -246,20 +247,20 @@ export async function DELETE(request: Request) {
       }
       return {
         type: "write" as const,
-        doc: toSharedPartsDocument({ parts: result.parts }, Date.now(), base.revision + 1),
+        doc: replacePartsLines(base, result.parts, Date.now()),
         removed: result.removed,
       };
     });
     if (decision.type === "error") return json({ ok: false, error: decision.error }, decision.status);
-    if (decision.type !== "write") {
+    if (decision.type !== "write" && decision.type !== "keep") {
       return json({ ok: false, error: "Shared parts store could not be written" }, 502);
     }
     return json({
       ok: true,
       empty: decision.doc.parts.length === 0,
       configured: true,
-      wrote: true,
-      removed: decision.removed,
+      wrote: decision.type === "write",
+      removed: decision.type === "write" ? decision.removed : undefined,
       ...decision.doc,
     });
   } catch (error) {

@@ -4,11 +4,12 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
-  { href: "/", label: "Jobs", current: "jobs" },
+  { href: "/", label: "Aging", current: "aging" },
   { href: "/parts", label: "Parts", current: "parts" },
+  { href: "/inventory", label: "Inventory", current: "inventory" },
 ] as const;
 
-export function BoardNav({ current }: { current: "jobs" | "parts" }) {
+export function BoardNav({ current }: { current: "aging" | "parts" | "inventory" }) {
   return (
     <nav aria-label="Shop boards" className="flex shrink-0 items-center gap-1">
       {LINKS.map((link) => {

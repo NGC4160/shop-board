@@ -1,4 +1,5 @@
 import {
+  LEGACY_PRIMARY_TECHS,
   PRIMARY_TECHS,
   coerceMillis,
   isPipelineStatus,
@@ -17,10 +18,12 @@ export type HcpOpenJob = {
   status: string;
   /** True when status is an exact Housecall Pro Jobs pipeline stage name. */
   statusIsPipeline: boolean;
-  /** Field tech name when it matches the shop dropdown; else empty. */
+  /** Current or former field tech. Empty when the assignee is not one of those names. */
   primaryTech: string;
   /** Housecall Pro `schedule.scheduled_start` millis. Null when missing — never invented. */
   scheduledStart?: number | null;
+  /** Housecall Pro `work_timestamps.started_at` millis. Null when missing — never invented. */
+  workStartedAt?: number | null;
   /**
    * True when the job payload included a `schedule` key (object or explicit null).
    * Used to distinguish “schedule omitted” from “HCP cleared / unscheduled”.
@@ -289,6 +292,20 @@ export function scheduledStartFromHcp(job: unknown): number | null {
   return null;
 }
 
+/**
+ * First clock-in from Jobs API `work_timestamps.started_at` only.
+ * Null when that field is missing or unparseable. Does not read
+ * `schedule.scheduled_start`, `created_at`, `updated_at`, `on_my_way_at`,
+ * or `completed_at`.
+ */
+export function workStartedAtFromHcp(job: unknown): number | null {
+  const record = asRecord(job);
+  if (!record) return null;
+  const timestamps = asRecord(record.work_timestamps);
+  if (!timestamps || !("started_at" in timestamps)) return null;
+  return parseHcpDateTime(timestamps.started_at);
+}
+
 /** True when the job object included a `schedule` key, even if start is empty. */
 export function hcpJobHasSchedule(job: unknown): boolean {
   const record = asRecord(job);
@@ -335,6 +352,8 @@ function pipelineStatusFromJob(job: Record<string, unknown>): string | null {
   return null;
 }
 
+const HCP_TECH_NAMES = new Set<string>([...PRIMARY_TECHS, ...LEGACY_PRIMARY_TECHS]);
+
 function techFromHcp(job: Record<string, unknown>): string {
   const assigned = job.assigned_employees;
   if (!Array.isArray(assigned)) return "";
@@ -342,7 +361,7 @@ function techFromHcp(job: Record<string, unknown>): string {
     const record = asRecord(employee);
     if (!record) continue;
     const name = [asString(record.first_name), asString(record.last_name)].filter(Boolean).join(" ");
-    if ((PRIMARY_TECHS as readonly string[]).includes(name)) return name;
+    if (HCP_TECH_NAMES.has(name)) return name;
   }
   return "";
 }
@@ -366,6 +385,7 @@ export function mapHcpJob(raw: unknown): HcpOpenJob | null {
     primaryTech: techFromHcp(job),
     scheduledStart: scheduledStartFromHcp(job),
     schedulePresent: hcpJobHasSchedule(job),
+    workStartedAt: workStartedAtFromHcp(job),
   };
 }
 
