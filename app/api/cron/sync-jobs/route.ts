@@ -1,18 +1,9 @@
 import { fetchHcpOpenJobs } from "@/lib/hcp";
 import { isChicagoSevenAmHour } from "@/lib/chicago";
+import { isAuthorizedCron } from "@/lib/cron-auth";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
-
-function isAuthorizedCron(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (secret) {
-    return request.headers.get("authorization") === `Bearer ${secret}`;
-  }
-  const ua = request.headers.get("user-agent") ?? "";
-  if (ua.includes("vercel-cron")) return true;
-  return process.env.NODE_ENV !== "production";
-}
 
 export async function GET(request: Request) {
   if (!isAuthorizedCron(request)) {

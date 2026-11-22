@@ -1,5 +1,6 @@
 import { syncInventoryDocument } from "@/lib/inventory-hcp-sync";
 import { emptySharedPartsDocument } from "@/lib/parts-board";
+import { isAuthorizedCron } from "@/lib/cron-auth";
 import {
   enqueuePartsMutation,
   isPartsStoreConfigured,
@@ -9,16 +10,6 @@ import {
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
-
-function isAuthorizedCron(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (secret) {
-    return request.headers.get("authorization") === `Bearer ${secret}`;
-  }
-  const ua = request.headers.get("user-agent") ?? "";
-  if (ua.includes("vercel-cron")) return true;
-  return process.env.NODE_ENV !== "production";
-}
 
 /**
  * Poll recently completed Housecall Pro jobs and deduct inventory.
