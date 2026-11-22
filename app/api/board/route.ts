@@ -1,11 +1,14 @@
+import { STALE_REVISION_ERROR, resolveBaseRevision } from "@/lib/revision";
 import {
-  parseSharedBoardDocument,
+  applyIncomingBoardPut,
+  emptySharedBoardDocument,
   toSharedBoardDocument,
 } from "@/lib/shared-board";
+import { validateBoardPut } from "@/lib/validate-board";
 import {
   isSharedStoreConfigured,
+  mutateSharedBoard,
   readSharedBoard,
-  writeSharedBoard,
   writeSharedBoardIfEmpty,
 } from "@/lib/shared-board-backend";
 
@@ -59,18 +62,21 @@ export async function PUT(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  const parsed = parseSharedBoardDocument(body);
-  if (!parsed) return json({ ok: false, error: "Board payload was not an object" }, 400);
+  const validated = validateBoardPut(body);
+  if (!validated.ok) return json({ ok: false, error: validated.error }, 400);
+
+  const base = resolveBaseRevision(body, request.headers.get("if-match"));
+  if (!base.ok) return json({ ok: false, error: base.error }, 400);
 
   const migrate =
     Boolean(body) &&
     typeof body === "object" &&
     (body as { migrate?: unknown }).migrate === true;
-  const next = toSharedBoardDocument(parsed, Date.now());
 
   try {
     if (migrate) {
-      const result = await writeSharedBoardIfEmpty(next);
+      const seeded = toSharedBoardDocument(validated.value, Date.now(), 1);
+      const result = await writeSharedBoardIfEmpty(seeded);
       return json({
         ok: true,
         empty: false,
@@ -80,13 +86,32 @@ export async function PUT(request: Request) {
         ...result.current,
       });
     }
-    await writeSharedBoard(next);
+    const decision = await mutateSharedBoard((current) => {
+      const applied = applyIncomingBoardPut(current, validated.value, base.revision);
+      if (!applied.ok) return { type: "conflict" as const, current: applied.current };
+      return { type: "write" as const, doc: applied.doc };
+    });
+    if (decision.type === "conflict") {
+      const current = decision.current ?? emptySharedBoardDocument();
+      return json(
+        {
+          ok: false,
+          conflict: true,
+          error: STALE_REVISION_ERROR,
+          ...current,
+        },
+        409,
+      );
+    }
+    if (decision.type !== "write" && decision.type !== "keep") {
+      return json({ ok: false, error: "Shared board store could not be written" }, 502);
+    }
     return json({
       ok: true,
       empty: false,
       configured: true,
-      wrote: true,
-      ...next,
+      wrote: decision.type === "write",
+      ...decision.doc,
     });
   } catch (error) {
     console.error("Shared board write failed", error);

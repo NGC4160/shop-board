@@ -1,4 +1,6 @@
 import { sanitizeLoadedParts, withPartLineExtras, type PartLine } from "@/lib/parts";
+import { isStaleRevision, readStoredRevision, STALE_REVISION_ERROR } from "@/lib/revision";
+import { validatePartsPut } from "@/lib/validate-parts";
 import {
   mergeInventoryItems,
   sanitizeLoadedInventory,
@@ -10,6 +12,8 @@ export const SHARED_PARTS_VERSION = 2;
 
 export type SharedPartsDocument = {
   version: typeof SHARED_PARTS_VERSION;
+  /** Monotonic per-document revision. Not the schema `version`. Legacy blobs are 0. */
+  revision: number;
   updatedAt: number;
   parts: PartLine[];
   inventory: InventoryItem[];
@@ -23,7 +27,7 @@ export type SharedPartsPayload = {
   updatedAt?: number | null;
 };
 
-const DOC_KEYS = new Set(["version", "updatedAt", "parts", "inventory", "jobs"]);
+const DOC_KEYS = new Set(["version", "revision", "updatedAt", "parts", "inventory", "jobs"]);
 
 type ParsedPartsBody = {
   parts: PartLine[];
@@ -70,6 +74,7 @@ export function parseSharedPartsDocument(value: unknown): SharedPartsDocument | 
   return {
     ...parsed.extras,
     version: SHARED_PARTS_VERSION,
+    revision: readStoredRevision(value),
     updatedAt: parsed.updatedAt,
     parts: parsed.parts,
     inventory: parsed.inventory ?? [],
@@ -79,20 +84,23 @@ export function parseSharedPartsDocument(value: unknown): SharedPartsDocument | 
 export function toSharedPartsDocument(
   payload: SharedPartsPayload,
   updatedAt = Date.now(),
+  revision = 0,
 ): SharedPartsDocument {
   const parts = sanitizeLoadedParts(payload.parts);
   const inventory = sanitizeLoadedInventory(payload.inventory ?? []);
   return {
     version: SHARED_PARTS_VERSION,
+    revision,
     updatedAt,
     parts,
     inventory: syncInventoryFromParts(parts, inventory, updatedAt),
   };
 }
 
-export function emptySharedPartsDocument(updatedAt = Date.now()): SharedPartsDocument {
+export function emptySharedPartsDocument(updatedAt = Date.now(), revision = 0): SharedPartsDocument {
   return {
     version: SHARED_PARTS_VERSION,
+    revision,
     updatedAt,
     parts: [],
     inventory: [],
@@ -159,10 +167,12 @@ function withSyncedParts(
   parts: PartLine[],
   inventory: InventoryItem[],
   now: number,
+  revision = (current.revision ?? 0) + 1,
 ): SharedPartsDocument {
   return {
     ...current,
     version: SHARED_PARTS_VERSION,
+    revision,
     updatedAt: now,
     parts,
     inventory: syncInventoryFromParts(parts, inventory, now),
@@ -189,6 +199,7 @@ export function replaceInventoryItems(
   return {
     ...base,
     version: SHARED_PARTS_VERSION,
+    revision: (base.revision ?? 0) + 1,
     updatedAt: now,
     parts: base.parts,
     inventory: sanitizeLoadedInventory(inventory),
@@ -200,7 +211,23 @@ export function applyIncomingPartsPut(
   current: SharedPartsDocument | null,
   body: unknown,
   now = Date.now(),
-): { ok: true; doc: SharedPartsDocument } | { ok: false; error: string } {
+  baseRevision?: number,
+):
+  | { ok: true; doc: SharedPartsDocument }
+  | { ok: false; conflict?: false; error: string }
+  | { ok: false; conflict: true; error: string; current: SharedPartsDocument | null } {
+  const validated = validatePartsPut(body);
+  if (!validated.ok) return { ok: false, error: validated.error };
+  if (baseRevision == null) {
+    return {
+      ok: false,
+      error: "Send the revision you loaded as the If-Match header or baseRevision, then try again.",
+    };
+  }
+  const currentRevision = current?.revision ?? 0;
+  if (isStaleRevision(currentRevision, baseRevision)) {
+    return { ok: false, conflict: true, error: STALE_REVISION_ERROR, current };
+  }
   const parsed = readPartsBody(body);
   if (!parsed) return { ok: false, error: "Parts payload was not an object" };
   const basedOn = readPartsWriteBaseUpdatedAt(body);
@@ -210,13 +237,18 @@ export function applyIncomingPartsPut(
     parsed.inventory == null
       ? base.inventory
       : mergeInventoryItems(base.inventory, parsed.inventory, basedOn);
-  return { ok: true, doc: withSyncedParts(base, merged.parts, inventory, now) };
+  return {
+    ok: true,
+    doc: withSyncedParts(base, merged.parts, inventory, now, currentRevision + 1),
+  };
 }
 
 /**
  * Inventory PUT. Parts lines stay as stored. Omitted inventory would be a
  * parts-board save, so this requires an inventory array. Does not re-sync
  * from parts — qty and the other inventory-owned fields are the edit.
+ * Bumps the shared document revision so a parts tablet reloads instead of
+ * saving over this stock edit.
  */
 export function applyIncomingInventoryPut(
   current: SharedPartsDocument | null,
@@ -234,6 +266,7 @@ export function applyIncomingInventoryPut(
     doc: {
       ...base,
       version: SHARED_PARTS_VERSION,
+      revision: (base.revision ?? 0) + 1,
       updatedAt: now,
       parts: base.parts,
       inventory: mergeInventoryItems(base.inventory, incoming, basedOn),

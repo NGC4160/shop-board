@@ -15,7 +15,7 @@ import {
   updateJob,
 } from "./board-store.ts";
 import { boardStats } from "./filters.ts";
-import { isBlankIdentity, seedJobs } from "./jobs.ts";
+import { isBlankIdentity, seedJobs, visibleJobs } from "./jobs.ts";
 
 describe("Add cart ghost", () => {
   it("does not persist a blank draft or bump Open", () => {
@@ -91,10 +91,12 @@ describe("board-only delete", () => {
     const id = getBoardSnapshot().jobs[0].id;
     const number = getBoardSnapshot().jobs[0].jobNumber;
     assert.equal(deleteJob(id), true);
-    assert.equal(getBoardSnapshot().jobs.some((job) => job.id === id), false);
+    assert.equal(visibleJobs(getBoardSnapshot().jobs).some((job) => job.id === id), false);
+    assert.ok(getBoardSnapshot().jobs.find((job) => job.id === id)?.deletedAt);
     assert.equal(getBoardSnapshot().dismissedJobNumbers.includes(number), true);
     assert.equal(undoDelete(), true);
-    assert.equal(getBoardSnapshot().jobs.some((job) => job.id === id), true);
+    assert.equal(getBoardSnapshot().jobs.find((job) => job.id === id)?.deletedAt, null);
+    assert.equal(visibleJobs(getBoardSnapshot().jobs).some((job) => job.id === id), true);
     assert.equal(getBoardSnapshot().dismissedJobNumbers.includes(number), false);
   });
 
@@ -121,7 +123,8 @@ describe("board-only delete", () => {
     ]);
     assert.equal(added, 0);
     assert.equal(updated, 0);
-    assert.equal(getBoardSnapshot().jobs.some((job) => job.jobNumber === "173128"), false);
+    assert.equal(visibleJobs(getBoardSnapshot().jobs).some((job) => job.jobNumber === "173128"), false);
+    assert.ok(getBoardSnapshot().jobs.find((job) => job.jobNumber === "173128")?.deletedAt);
   });
 
   it("clears a dismissal when the same job number is added locally", () => {
@@ -340,8 +343,10 @@ describe("applyHcpJobs customer merge", () => {
     assert.equal(updated, 0);
     assert.equal(removed, 2);
     const jobs = getBoardSnapshot().jobs;
-    assert.equal(jobs.some((job) => job.jobNumber === "17429"), false);
-    assert.equal(jobs.some((job) => job.jobNumber === "17447"), false);
+    assert.equal(visibleJobs(jobs).some((job) => job.jobNumber === "17429"), false);
+    assert.equal(visibleJobs(jobs).some((job) => job.jobNumber === "17447"), false);
+    assert.ok(jobs.find((job) => job.jobNumber === "17429")?.deletedAt);
+    assert.ok(jobs.find((job) => job.jobNumber === "17447")?.deletedAt);
     assert.equal(jobs.some((job) => job.jobNumber === "17428"), true);
     assert.equal(jobs.find((job) => job.jobNumber === "17428")?.nextAction, "Text when ready");
   });

@@ -8,6 +8,7 @@ import {
   customerNameError,
   hasDuplicateJobNumber,
   sanitizeLoadedJobs,
+  isDeletedJob,
   jobNumberError,
   nextPipelineStatus,
   normalizeJobNumber,
@@ -19,6 +20,18 @@ import {
 } from "@/lib/jobs";
 import { mergeHcpJobs } from "@/lib/hcp-merge";
 import type { HcpOpenJob } from "@/lib/hcp";
+import {
+  stableStringify,
+  threeWayMergeById,
+  threeWayMergeDismissed,
+  threeWayMergeValue,
+} from "@/lib/document-merge";
+import {
+  JOBS_GAVE_UP_MESSAGE,
+  JOBS_MERGED_MESSAGE,
+  JOBS_REFRESHED_MESSAGE,
+  notifyWriteConflict,
+} from "@/lib/write-conflict";
 import {
   SHARED_MIGRATED_KEY,
   defaultSharedPrefs,
@@ -206,22 +219,40 @@ export function exportSharedPayload(): SharedBoardPayload {
 export function applySharedSnapshot(shared: SharedBoardDocument | SharedBoardPayload) {
   const parsed = parseSharedBoardDocument(shared);
   if (!parsed) return false;
-  commit(
-    {
-      ...snapshot,
-      jobs: parsed.jobs,
-      prefs: parsed.prefs,
-      dismissedJobNumbers: parsed.dismissedJobNumbers,
-      lastHcpSyncAt: snapshot.lastHcpSyncAt,
-    },
-    false,
-  );
+  snapshot = {
+    ...snapshot,
+    jobs: parsed.jobs,
+    prefs: parsed.prefs,
+    dismissedJobNumbers: parsed.dismissedJobNumbers,
+    lastHcpSyncAt: snapshot.lastHcpSyncAt,
+  };
+  rememberServerBoard(parsed);
   lastSyncedPayload = sharedPayloadKey();
+  persistLocal();
+  emit();
   return true;
 }
 
 /** JSON of the last copy known to match the server; unchanged boards are not re-PUT. */
 let lastSyncedPayload: string | null = null;
+/** Last server revision this page applied. Sent as If-Match / baseRevision. */
+let acknowledgedRevision = 0;
+/** Snapshot at that revision, used to merge a 409 instead of writing over it. */
+let baseJobs: CartJob[] = [];
+let basePrefs: BoardPrefs = { ...defaultPrefs };
+let baseDismissed: string[] = [];
+
+function rememberServerBoard(doc: {
+  revision: number;
+  jobs: CartJob[];
+  prefs: BoardPrefs;
+  dismissedJobNumbers: string[];
+}) {
+  acknowledgedRevision = doc.revision;
+  baseJobs = doc.jobs;
+  basePrefs = doc.prefs;
+  baseDismissed = doc.dismissedJobNumbers;
+}
 
 function sharedPayloadKey(): string {
   return JSON.stringify(exportSharedPayload());
@@ -238,25 +269,87 @@ function scheduleSharedPush() {
   }, 350);
 }
 
-async function pushSharedBoard(migrate = false): Promise<SharedBoardDocument | null> {
+async function pushSharedBoard(migrate = false, attempt = 0): Promise<SharedBoardDocument | null> {
   if (typeof window === "undefined" || !sharedConfigured) return null;
+  const baseRevision = acknowledgedRevision;
+  const localJobs = snapshot.jobs;
+  const localPrefs = snapshot.prefs;
+  const localDismissed = snapshot.dismissedJobNumbers;
   try {
     const response = await fetch("/api/board", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": String(baseRevision),
+      },
       cache: "no-store",
-      body: JSON.stringify({ ...exportSharedPayload(), migrate }),
+      body: JSON.stringify({ ...exportSharedPayload(), baseRevision, migrate }),
     });
     const body = (await response.json().catch(() => null)) as
-      | (SharedBoardDocument & { configured?: boolean; wrote?: boolean })
+      | (SharedBoardDocument & { configured?: boolean; wrote?: boolean; error?: string })
       | null;
     if (body?.configured === false) {
       sharedConfigured = false;
       return null;
     }
-    if (!response.ok || !body) return null;
+    if (response.status === 409 && body && !migrate) {
+      const server = parseSharedBoardDocument(body);
+      if (!server) {
+        notifyWriteConflict({ board: "jobs", message: JOBS_GAVE_UP_MESSAGE });
+        return null;
+      }
+      const mergedJobs = threeWayMergeById(baseJobs, localJobs, server.jobs).items;
+      const mergedPrefs = threeWayMergeValue(basePrefs, localPrefs, server.prefs);
+      const mergedDismissed = threeWayMergeDismissed(baseDismissed, localDismissed, server.dismissedJobNumbers);
+      const mergedKey = stableStringify({
+        jobs: mergedJobs,
+        prefs: mergedPrefs,
+        dismissedJobNumbers: mergedDismissed,
+      });
+      const serverKey = stableStringify({
+        jobs: server.jobs,
+        prefs: server.prefs,
+        dismissedJobNumbers: server.dismissedJobNumbers,
+      });
+      const changed = mergedKey !== serverKey;
+      snapshot = {
+        ...snapshot,
+        jobs: changed ? mergedJobs : server.jobs,
+        prefs: changed ? mergedPrefs : server.prefs,
+        dismissedJobNumbers: changed ? mergedDismissed : server.dismissedJobNumbers,
+      };
+      rememberServerBoard(server);
+      lastSyncedPayload = changed ? null : sharedPayloadKey();
+      persistLocal();
+      emit();
+      if (!changed) {
+        notifyWriteConflict({ board: "jobs", message: JOBS_REFRESHED_MESSAGE });
+        return server;
+      }
+      if (attempt >= 1) {
+        notifyWriteConflict({ board: "jobs", message: JOBS_GAVE_UP_MESSAGE });
+        return server;
+      }
+      notifyWriteConflict({ board: "jobs", message: JOBS_MERGED_MESSAGE });
+      return pushSharedBoard(false, attempt + 1);
+    }
+    if (!response.ok || !body) {
+      if (body?.error) notifyWriteConflict({ board: "jobs", message: body.error });
+      return null;
+    }
     const parsed = parseSharedBoardDocument(body);
-    if (parsed) lastSyncedPayload = sharedPayloadKey();
+    if (parsed) {
+      snapshot = {
+        ...snapshot,
+        jobs: parsed.jobs,
+        prefs: parsed.prefs,
+        dismissedJobNumbers: parsed.dismissedJobNumbers,
+      };
+      rememberServerBoard(parsed);
+      lastSyncedPayload = sharedPayloadKey();
+      persistLocal();
+      emit();
+    }
     return parsed;
   } catch {
     return null;
@@ -445,7 +538,14 @@ export function insertJob(job: CartJob): boolean {
   const key = next.jobNumber;
   commit({
     ...snapshot,
-    jobs: [next, ...snapshot.jobs.filter((item) => item.id !== job.id)],
+    jobs: [
+      next,
+      ...snapshot.jobs.filter((item) => {
+        if (item.id === job.id) return false;
+        if (isDeletedJob(item) && normalizeJobNumber(item.jobNumber) === key) return false;
+        return true;
+      }),
+    ],
     dismissedJobNumbers: snapshot.dismissedJobNumbers.filter((item) => item !== key),
   });
   return true;
@@ -458,10 +558,13 @@ export function deleteJob(id: string): boolean {
   const dismissed = key
     ? [...new Set([...snapshot.dismissedJobNumbers, key])]
     : snapshot.dismissedJobNumbers;
+  const now = Date.now();
   commit(
     {
       ...snapshot,
-      jobs: snapshot.jobs.filter((job) => job.id !== id),
+      jobs: snapshot.jobs.map((job) =>
+        job.id === id ? { ...job, deletedAt: now, updatedAt: now } : job,
+      ),
       dismissedJobNumbers: dismissed,
     },
     true,

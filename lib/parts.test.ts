@@ -79,9 +79,11 @@ describe("sanitize and upsert", () => {
     assert.equal(removed.ok, true);
     if (!removed.ok) return;
     assert.equal(removed.removed.id, "line-drop");
-    assert.equal(removed.parts.length, 1);
-    assert.equal(removed.parts[0]?.id, "line-keep");
-    assert.equal(removed.parts[0]?.customerName, "SAMPLE Keep");
+    assert.ok(removed.removed.deletedAt);
+    assert.equal(removed.parts.length, 2);
+    assert.equal(removed.parts.find((line) => line.id === "line-keep")?.customerName, "SAMPLE Keep");
+    assert.equal(removed.parts.find((line) => line.id === "line-keep")?.deletedAt, null);
+    assert.ok(removed.parts.find((line) => line.id === "line-drop")?.deletedAt);
     assert.equal(removePartLine(removed.parts, "line-drop").ok, false);
     assert.equal(parsePartIdInput("").ok, false);
     assert.equal(parsePartIdInput({ id: "has space" }).ok, false);

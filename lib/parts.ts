@@ -41,6 +41,8 @@ export type PartLine = {
   expectedDate: string;
   note: string;
   updatedAt: number;
+  /** Set when the line is removed. Null means the line is still on the board. */
+  deletedAt: number | null;
 };
 
 export type PartLineInput = {
@@ -57,6 +59,7 @@ export type PartLineInput = {
   expectedDate?: unknown;
   note?: unknown;
   updatedAt?: unknown;
+  deletedAt?: unknown;
 };
 
 const PART_LINE_KEYS = new Set([
@@ -109,6 +112,7 @@ export const SAMPLE_PART_LINE: PartLine = {
   expectedDate: "",
   note: "Fake sample row for layout. Not a real shipment.",
   updatedAt: 0,
+  deletedAt: null,
 };
 
 export function createPartId(): string {
@@ -133,7 +137,17 @@ export function emptyPartLine(id = createPartId(), now = Date.now()): PartLine {
     expectedDate: "",
     note: "",
     updatedAt: now,
+    deletedAt: null,
   };
+}
+
+export function readDeletedAt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+export function isDeletedPart(part: { deletedAt?: number | null }): boolean {
+  return readDeletedAt(part.deletedAt) != null;
 }
 
 export function isPartStatus(value: string): value is PartStatus {
@@ -288,6 +302,7 @@ export function parsePartPatch(value: unknown): { id: string; patch: Partial<Par
   if (typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt)) {
     patch.updatedAt = record.updatedAt;
   }
+  if ("deletedAt" in record) patch.deletedAt = readDeletedAt(record.deletedAt);
   return { id, patch };
 }
 
@@ -349,6 +364,7 @@ export function mergePartLine(current: PartLine | null, patch: Partial<PartLine>
     note: patch.note !== undefined ? clipText(patch.note, 160) : base.note,
     updatedAt:
       patch.updatedAt !== undefined && Number.isFinite(patch.updatedAt) ? patch.updatedAt : now,
+    deletedAt: patch.deletedAt !== undefined ? readDeletedAt(patch.deletedAt) : base.deletedAt,
   };
   return applyDestination(next, patch);
 }
@@ -375,7 +391,7 @@ export function upsertPartLine(
   } else if (!existing) {
     return { ok: false, error: "Destination name is required" };
   }
-  const line = mergePartLine(existing, fields, now);
+  const line = mergePartLine(existing, { ...fields, deletedAt: null }, now);
   if (!existing) {
     return { ok: true, parts: [...parts, line], line };
   }
@@ -402,23 +418,25 @@ export function parsePartIdInput(
 }
 
 /**
- * Remove one line by stable id. Other lines are unchanged.
- * Does not invent a replacement row.
+ * Hide one line by stable id. The line stays in the document with `deletedAt`
+ * so it can be restored. A second delete of a tombstone is "not found".
  */
 export function removePartLine(
   parts: readonly PartLine[],
   incoming: unknown,
+  now = Date.now(),
 ):
   | { ok: true; parts: PartLine[]; removed: PartLine }
   | { ok: false; error: string; missing?: boolean } {
   const parsed = parsePartIdInput(incoming);
   if (!parsed.ok) return { ok: false, error: parsed.error };
-  const removed = parts.find((item) => item.id === parsed.id);
+  const removed = parts.find((item) => item.id === parsed.id && !isDeletedPart(item));
   if (!removed) return { ok: false, error: "Part not found", missing: true };
+  const tombstone: PartLine = { ...removed, deletedAt: now, updatedAt: now };
   return {
     ok: true,
-    parts: parts.filter((item) => item.id !== parsed.id),
-    removed,
+    parts: parts.map((item) => (item.id === parsed.id ? tombstone : item)),
+    removed: tombstone,
   };
 }
 
@@ -446,6 +464,7 @@ export function filterParts(
 ): PartLine[] {
   const status = query.status.trim();
   return parts.filter((part) => {
+    if (isDeletedPart(part)) return false;
     if (status && status !== "all" && part.status !== status) return false;
     return partMatchesSearch(part, query.search);
   });

@@ -7,6 +7,8 @@ import {
   emptySharedPartsDocument,
   toSharedPartsDocument,
 } from "./parts-board.ts";
+import { resolveBaseRevision } from "./revision.ts";
+import { subscribeWriteConflict } from "./write-conflict.ts";
 import {
   applySharedPartsSnapshot,
   deletePart,
@@ -76,9 +78,11 @@ describe("parts store isolation", () => {
   it("can remove a row and undo", () => {
     replaceParts([SAMPLE_PART_LINE]);
     assert.equal(deletePart("sample-demo-part"), true);
-    assert.equal(getPartsSnapshot().parts.length, 0);
+    assert.equal(getPartsSnapshot().parts.filter((part) => !part.deletedAt).length, 0);
+    assert.ok(getPartsSnapshot().parts[0]?.deletedAt);
     assert.equal(undoDeletePart(), true);
     assert.equal(getPartsSnapshot().parts[0]?.id, "sample-demo-part");
+    assert.equal(getPartsSnapshot().parts[0]?.deletedAt, null);
   });
 
   it("applies a shared snapshot without seeding fake customers", () => {
@@ -131,7 +135,21 @@ describe("parts page refresh and stale save", () => {
       if (init?.method === "PUT") {
         const body = JSON.parse(String(init.body ?? "{}")) as unknown;
         puts.push(body);
-        const result = applyIncomingPartsPut(serverDoc, body, Date.now());
+        const header = new Headers(init?.headers).get("if-match");
+        const base = resolveBaseRevision(body, header);
+        if (!base.ok) return jsonResponse({ ok: false, error: base.error }, 400);
+        const result = applyIncomingPartsPut(serverDoc, body, Date.now(), base.revision);
+        if (!result.ok && result.conflict) {
+          return jsonResponse(
+            {
+              ok: false,
+              conflict: true,
+              error: result.error,
+              ...(result.current ?? serverDoc),
+            },
+            409,
+          );
+        }
         if (!result.ok) return jsonResponse({ ok: false, error: result.error }, 400);
         serverDoc = result.doc;
         return jsonResponse({ ok: true, empty: false, configured: true, wrote: true, ...serverDoc });
@@ -191,26 +209,34 @@ describe("parts page refresh and stale save", () => {
       partDescription: "Example cable added by the bot",
       updatedAt: 2_000,
     };
-    serverDoc = toSharedPartsDocument({ parts: [existing] }, 1_000);
+    serverDoc = toSharedPartsDocument({ parts: [existing] }, 1_000, 1);
     installFetch();
     await hydrateSharedParts();
 
-    serverDoc = toSharedPartsDocument({ parts: [existing, posted] }, 2_000);
+    serverDoc = toSharedPartsDocument({ parts: [existing, posted] }, 2_000, 2);
+    const notices: string[] = [];
+    const unsubscribe = subscribeWriteConflict((notice) => notices.push(notice.message));
     assert.equal(updatePart("already-on-board", { note: "On the shelf" }), true);
     await flushSharedPartsPush();
+    unsubscribe();
 
-    assert.equal(puts.length, 1);
-    const sent = puts[0] as { updatedAt?: number; parts?: { id: string }[] };
-    assert.equal(sent.updatedAt, 1_000);
-    assert.equal(sent.parts?.some((line) => line.id === "bot-added-while-open"), false);
+    assert.equal(puts.length, 2);
+    const first = puts[0] as { baseRevision?: number; parts?: { id: string }[] };
+    const second = puts[1] as { baseRevision?: number; parts?: { id: string; note?: string }[] };
+    assert.equal(first.baseRevision, 1);
+    assert.equal(first.parts?.some((line) => line.id === "bot-added-while-open"), false);
+    assert.equal(second.baseRevision, 2);
+    assert.equal(second.parts?.some((line) => line.id === "bot-added-while-open"), true);
+    assert.equal(
+      second.parts?.find((line) => line.id === "already-on-board")?.note,
+      "On the shelf",
+    );
+    assert.equal(serverDoc.revision, 3);
     assert.equal(serverDoc.parts.some((line) => line.id === "bot-added-while-open"), true);
     assert.equal(
       getPartsSnapshot().parts.find((line) => line.id === "already-on-board")?.note,
       "On the shelf",
     );
-    assert.equal(
-      getPartsSnapshot().parts.some((line) => line.id === "bot-added-while-open"),
-      true,
-    );
+    assert.match(notices.join(" "), /merged/i);
   });
 });

@@ -1,6 +1,7 @@
 import {
   cartLabel,
   isClosedStatus,
+  isDeletedJob,
   isIsoDate,
   isPartsStatus,
   isPickupStatus,
@@ -148,9 +149,10 @@ export function filterJobsByTimeframe<T extends Pick<CartJob, "hcpScheduledStart
 }
 
 export function boardStats(jobs: CartJob[], now = Date.now()): BoardStats {
-  const openJobs = jobs.filter((job) => !isClosedStatus(job.status));
+  const active = jobs.filter((job) => !isDeletedJob(job));
+  const openJobs = active.filter((job) => !isClosedStatus(job.status));
   return {
-    total: jobs.length,
+    total: active.length,
     open: openJobs.length,
     hot: openJobs.filter((job) => job.priority === "hot").length,
     due: openJobs.filter((job) => isDueToday(job, now)).length,

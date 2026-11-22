@@ -5,6 +5,7 @@ import {
   isPipelineStatus,
   normalizeJobNumber,
 } from "@/lib/jobs";
+import { fetchWithRetry } from "@/lib/hcp-retry";
 
 export const HCP_API_BASE = "https://api.housecallpro.com";
 
@@ -394,7 +395,7 @@ async function fetchJobsPage(
   page: number,
 ): Promise<{ jobs: unknown[]; totalPages: number | null }> {
   const url = buildHcpJobsListUrl(baseUrl, page);
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: authHeaders(apiKey),
     cache: "no-store",
   });

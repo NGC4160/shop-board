@@ -7,6 +7,7 @@ import {
   cartLabel,
   formatTimeframe,
   isClosedStatus,
+  isDeletedJob,
   statusTone,
   type CartJob,
 } from "@/lib/jobs";
@@ -29,7 +30,7 @@ export function WallBoard({ jobs }: { jobs: CartJob[] }) {
   }, []);
 
   const openJobs = useMemo(
-    () => jobs.filter((job) => !isClosedStatus(job.status)),
+    () => jobs.filter((job) => !isClosedStatus(job.status) && !isDeletedJob(job)),
     [jobs],
   );
 

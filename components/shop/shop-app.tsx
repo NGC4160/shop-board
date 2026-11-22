@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast, Toaster } from "sonner";
 import {
   customerNameError,
@@ -9,6 +9,7 @@ import {
   isBlankIdentity,
   jobNumberError,
   normalizeJobNumber,
+  visibleJobs,
   type CartJob,
 } from "@/lib/jobs";
 import {
@@ -36,6 +37,7 @@ import { BoardNav } from "@/components/shop/board-nav";
 import { HcpSyncButton } from "@/components/shop/hcp-sync-button";
 import { TimeframeFilter } from "@/components/shop/timeframe-filter";
 import { RemoveConfirm } from "@/components/shop/remove-confirm";
+import { subscribeWriteConflict } from "@/lib/write-conflict";
 import { usePullToRefresh } from "@/components/shop/use-pull-to-refresh";
 import { useMobileViewportRestore } from "@/components/shop/use-mobile-viewport";
 
@@ -54,6 +56,13 @@ export function ShopApp() {
   const timeframe = board.prefs.timeframe ?? "";
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
+
+  useEffect(() => {
+    return subscribeWriteConflict((notice) => {
+      if (notice.board !== "jobs") return;
+      toast.error(notice.message);
+    });
+  }, []);
 
   const reportSync = useCallback((result: ClientHcpSyncResult, forced: boolean) => {
     if (!result.ok) {
@@ -171,9 +180,13 @@ export function ShopApp() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [draft, abandonBlankDraft]);
 
-  const visible = sortJobsByDaysHeld(
-    filterJobsByTimeframe(jobsOverSevenDaysStarted(board.jobs, now), timeframe),
-    now,
+  const visible = useMemo(
+    () =>
+      sortJobsByDaysHeld(
+        filterJobsByTimeframe(jobsOverSevenDaysStarted(visibleJobs(board.jobs), now), timeframe),
+        now,
+      ),
+    [board.jobs, now, timeframe],
   );
   const timeframeLabel = formatTimeframe(timeframe);
 

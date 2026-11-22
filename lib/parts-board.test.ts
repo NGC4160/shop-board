@@ -72,7 +72,8 @@ describe("parts document isolation", () => {
   it("stamps version 2 without a jobs key", () => {
     const doc = emptySharedPartsDocument(1);
     assert.equal(doc.version, 2);
-    assert.deepEqual(Object.keys(doc).sort(), ["inventory", "parts", "updatedAt", "version"]);
+    assert.equal(doc.revision, 0);
+    assert.deepEqual(Object.keys(doc).sort(), ["inventory", "parts", "revision", "updatedAt", "version"]);
   });
 });
 
@@ -118,29 +119,43 @@ describe("stale parts PUT merge", () => {
     assert.equal(merged.parts[0]?.note, "On the shelf");
   });
 
-  it("keeps a newer Checked in line when a stale page saves another row", () => {
+  it("returns the current document when the base revision is stale", () => {
     const checkedIn = {
       ...SAMPLE_PART_LINE,
       id: "line-checked-in",
       status: "Checked in" as const,
       updatedAt: 2_000,
     };
-    const current = toSharedPartsDocument({ parts: [older, checkedIn] }, 2_000);
-    const result = applyIncomingPartsPut(current, { parts: [older], updatedAt: 1_000 }, 3_000);
-    assert.equal(result.ok, true);
-    if (!result.ok) return;
-    assert.equal(result.doc.parts.some((line) => line.id === "line-checked-in"), true);
-    assert.equal(result.doc.parts.find((line) => line.id === "line-checked-in")?.status, "Checked in");
+    const current = toSharedPartsDocument({ parts: [older, checkedIn] }, 2_000, 4);
+    const result = applyIncomingPartsPut(
+      current,
+      { parts: [older], baseRevision: 3 },
+      3_000,
+      3,
+    );
+    assert.equal(result.ok, false);
+    if (result.ok || !result.conflict) return;
+    assert.equal(result.current?.revision, 4);
+    assert.equal(result.current?.parts.some((line) => line.id === "line-checked-in"), true);
+    assert.equal(result.current?.parts.find((line) => line.id === "line-checked-in")?.status, "Checked in");
   });
 
-  it("does not let a stale save drop newer lines", () => {
-    const current = toSharedPartsDocument({ parts: [older, newer] }, 2_000);
-    const result = applyIncomingPartsPut(current, { parts: [older], updatedAt: 1_000 }, 3_000);
+  it("bumps the revision when the base revision matches", () => {
+    const current = toSharedPartsDocument({ parts: [older, newer] }, 2_000, 4);
+    const result = applyIncomingPartsPut(current, { parts: [older, newer], baseRevision: 4 }, 3_000, 4);
     assert.equal(result.ok, true);
     if (!result.ok) return;
-    assert.equal(result.doc.parts.some((line) => line.id === "line-bot"), true);
-    assert.equal(result.doc.parts.some((line) => line.id === "line-old"), true);
+    assert.equal(result.doc.revision, 5);
+    assert.equal(result.doc.parts.length, 2);
     assert.equal(result.doc.updatedAt, 3_000);
+  });
+
+  it("rejects a PUT that does not say which revision it loaded", () => {
+    const current = toSharedPartsDocument({ parts: [older] }, 1_000, 1);
+    const result = applyIncomingPartsPut(current, { parts: [older] }, 2_000);
+    assert.equal(result.ok, false);
+    if (result.ok || result.conflict) return;
+    assert.match(result.error, /baseRevision/);
   });
 });
 
@@ -220,7 +235,9 @@ describe("v1 parts documents", () => {
       ],
       updatedAt: 1_000,
     };
-    const result = applyIncomingPartsPut(current, staleClient, 3_000);
+    const blocked = applyIncomingPartsPut(current, staleClient, 3_000);
+    assert.equal(blocked.ok, false);
+    const result = applyIncomingPartsPut(current, staleClient, 3_000, current.revision);
     assert.equal(result.ok, true);
     if (!result.ok) return;
     const line = result.doc.parts[0];
