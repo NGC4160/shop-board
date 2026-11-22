@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { seedJobs } from "./jobs.ts";
-import { SAMPLE_PART_LINE, sanitizePartLine } from "./parts.ts";
-import { syncInventoryFromParts, type InventoryItem } from "./inventory.ts";
+import { SAMPLE_PART_LINE, removePartLine, sanitizePartLine } from "./parts.ts";
+import { applyInventoryReceipts, type InventoryItem } from "./inventory.ts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
   mergeSharedPartsDocuments,
   parseSharedPartsDocument,
   readPartsWriteBaseUpdatedAt,
+  replacePartsLines,
   toSharedPartsDocument,
 } from "./parts-board.ts";
 import { SHARED_PARTS_PRIOR_BLOB_PATH } from "./parts-board-backend.ts";
@@ -73,7 +74,17 @@ describe("parts document isolation", () => {
     const doc = emptySharedPartsDocument(1);
     assert.equal(doc.version, 2);
     assert.equal(doc.revision, 0);
-    assert.deepEqual(Object.keys(doc).sort(), ["inventory", "parts", "revision", "updatedAt", "version"]);
+    assert.deepEqual(Object.keys(doc).sort(), [
+      "inventory",
+      "inventoryFlags",
+      "inventoryReceipts",
+      "inventorySync",
+      "inventoryUsage",
+      "parts",
+      "revision",
+      "updatedAt",
+      "version",
+    ]);
   });
 });
 
@@ -179,6 +190,7 @@ describe("v1 parts documents", () => {
     return {
       id: "inv-stock",
       sourcePartLineId: "LINE-STOCK",
+      hcpMaterialId: null,
       partName: "Example bushing",
       partNumber: "PN-1",
       supplier: "Example Vendor",
@@ -260,6 +272,7 @@ describe("v1 parts documents", () => {
     const manual: InventoryItem = {
       id: "inv-manual",
       sourcePartLineId: null,
+      hcpMaterialId: null,
       partName: "Windshield",
       partNumber: "",
       supplier: "Example Glass",
@@ -273,10 +286,27 @@ describe("v1 parts documents", () => {
     };
     const part = sanitizePartLine(legacyLine);
     assert.ok(part);
-    const synced = syncInventoryFromParts([part], [manual], 5);
-    assert.equal(synced.filter((item) => item.sourcePartLineId == null).length, 1);
-    assert.equal(synced.filter((item) => item.sourcePartLineId === "LINE-STOCK").length, 1);
-    assert.equal(synced.find((item) => item.id === "inv-manual")?.qtyOnHand, 1);
+    const received = applyInventoryReceipts([], [part], [manual], [], 5);
+    assert.equal(received.inventory.filter((item) => item.sourcePartLineId == null).length, 1);
+    assert.equal(received.inventory.filter((item) => item.sourcePartLineId === "LINE-STOCK").length, 1);
+    assert.equal(received.inventory.find((item) => item.id === "inv-manual")?.qtyOnHand, 1);
+    assert.equal(received.inventory.find((item) => item.id === "inv-manual")?.deletedAt, null);
+  });
+
+  it("soft-deleting a parts line leaves the inventory row and its qty", () => {
+    const part = sanitizePartLine(legacyLine);
+    assert.ok(part);
+    const current = toSharedPartsDocument({ parts: [part] }, 1_000, 2);
+    current.inventory = [stockItem({ qtyOnHand: 4 })];
+    const removed = removePartLine(current.parts, part.id, 2_000);
+    assert.equal(removed.ok, true);
+    if (!removed.ok) return;
+    const next = replacePartsLines(current, removed.parts, 2_000);
+    assert.equal(next.parts[0]?.deletedAt, 2_000);
+    assert.equal(next.inventory[0]?.deletedAt, null);
+    assert.equal(next.inventory[0]?.qtyOnHand, 4);
+    assert.equal(next.inventory[0]?.unitValue, 10);
+    assert.equal(next.revision, 3);
   });
 
   it("names the rolling prior document used before each save", () => {

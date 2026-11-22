@@ -1,14 +1,21 @@
-import type { PartLine } from "@/lib/parts";
+import type { PartLine, PartStatus } from "@/lib/parts";
 
 /**
- * Stock rows live in the same parts document as board lines so a destination
- * change and its inventory link save in one write.
- * One parts line maps to at most one item (`sourcePartLineId`). Mixed orders
- * are not split here.
+ * Stock rows live in the parts document, but they are not owned by a parts
+ * line. Once a row exists, deleting or editing that line does not delete it
+ * or change its qty, unit value, or description. A retired row stays retired.
+ * Receiving stock (a line newly Received or Checked in, destination Inventory)
+ * creates a row or adds qty to a live one.
+ *
+ * `sourcePartLineId` only records which line first received the row.
+ * `hcpMaterialId` is an explicit Housecall Pro price-book material id
+ * (`service_item_id`). Matching a job part uses that id or an exact part number.
  */
 export type InventoryItem = {
   id: string;
   sourcePartLineId: string | null;
+  /** Housecall Pro price-book material id. Empty when the row is matched by part number only. */
+  hcpMaterialId: string | null;
   partName: string;
   partNumber: string;
   supplier: string;
@@ -24,6 +31,7 @@ export type InventoryItem = {
 export type InventoryItemInput = {
   id?: unknown;
   sourcePartLineId?: unknown;
+  hcpMaterialId?: unknown;
   partName?: unknown;
   partNumber?: unknown;
   supplier?: unknown;
@@ -39,6 +47,7 @@ export type InventoryItemInput = {
 const INVENTORY_KEYS = new Set([
   "id",
   "sourcePartLineId",
+  "hcpMaterialId",
   "partName",
   "partNumber",
   "supplier",
@@ -66,10 +75,22 @@ function finiteNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function requiredQty(value: unknown, fallback = 0): number {
+/** On-hand qty may go negative when a job uses more than the shelf shows. */
+function onHandQty(value: unknown, fallback = 0): number {
   const parsed = finiteNumber(value);
-  if (parsed === undefined || parsed < 0) return fallback;
+  if (parsed === undefined) return fallback;
   return parsed;
+}
+
+export function normalizePartNumber(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().toUpperCase().slice(0, 80);
+}
+
+export function normalizeHcpMaterialId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, 128);
+  return trimmed || null;
 }
 
 function optionalQty(value: unknown, fallback: number | null): number | null {
@@ -133,6 +154,7 @@ export function emptyInventoryItem(id = createInventoryId(), now = Date.now()): 
   return {
     id,
     sourcePartLineId: null,
+    hcpMaterialId: null,
     partName: "",
     partNumber: "",
     supplier: "",
@@ -155,15 +177,18 @@ export function mergeInventoryItem(
   const extras = { ...itemExtras(base), ...itemExtras(patch) };
   const source =
     patch.sourcePartLineId !== undefined ? sourcePartLineId(patch.sourcePartLineId) : base.sourcePartLineId;
+  const hcpMaterialId =
+    patch.hcpMaterialId !== undefined ? normalizeHcpMaterialId(patch.hcpMaterialId) : base.hcpMaterialId;
   return {
     ...extras,
     id: normalizeInventoryId(patch.id) || base.id,
     sourcePartLineId: source,
+    hcpMaterialId,
     partName: patch.partName !== undefined ? clip(patch.partName, 200) : base.partName,
     partNumber: patch.partNumber !== undefined ? clip(patch.partNumber, 80) : base.partNumber,
     supplier: patch.supplier !== undefined ? clip(patch.supplier, 80) : base.supplier,
     description: patch.description !== undefined ? clip(patch.description, 200) : base.description,
-    qtyOnHand: patch.qtyOnHand !== undefined ? requiredQty(patch.qtyOnHand, base.qtyOnHand) : base.qtyOnHand,
+    qtyOnHand: patch.qtyOnHand !== undefined ? onHandQty(patch.qtyOnHand, base.qtyOnHand) : base.qtyOnHand,
     minQty: patch.minQty !== undefined ? optionalQty(patch.minQty, base.minQty) : base.minQty,
     minOrderQty:
       patch.minOrderQty !== undefined ? optionalQty(patch.minOrderQty, base.minOrderQty) : base.minOrderQty,
@@ -186,11 +211,12 @@ export function sanitizeInventoryItem(value: unknown): InventoryItem | null {
   if (!id || inventoryIdError(id)) return null;
   const patch: Partial<InventoryItem> = { id };
   if ("sourcePartLineId" in record) patch.sourcePartLineId = sourcePartLineId(record.sourcePartLineId);
+  if ("hcpMaterialId" in record) patch.hcpMaterialId = normalizeHcpMaterialId(record.hcpMaterialId);
   if ("partName" in record) patch.partName = clip(record.partName, 200);
   if ("partNumber" in record) patch.partNumber = clip(record.partNumber, 80);
   if ("supplier" in record) patch.supplier = clip(record.supplier, 80);
   if ("description" in record) patch.description = clip(record.description, 200);
-  if ("qtyOnHand" in record) patch.qtyOnHand = requiredQty(record.qtyOnHand, 0);
+  if ("qtyOnHand" in record) patch.qtyOnHand = onHandQty(record.qtyOnHand, 0);
   if ("minQty" in record) patch.minQty = optionalQty(record.minQty, null);
   if ("minOrderQty" in record) patch.minOrderQty = optionalQty(record.minOrderQty, null);
   if ("unitValue" in record) patch.unitValue = optionalQty(record.unitValue, null);
@@ -210,54 +236,91 @@ export function sanitizeInventoryItem(value: unknown): InventoryItem | null {
 export function sanitizeLoadedInventory(value: unknown): InventoryItem[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
-  const sourceSeen = new Set<string>();
   const items: InventoryItem[] = [];
   for (const item of value) {
     const line = sanitizeInventoryItem(item);
     if (!line || seen.has(line.id)) continue;
-    if (line.sourcePartLineId) {
-      if (sourceSeen.has(line.sourcePartLineId)) continue;
-      sourceSeen.add(line.sourcePartLineId);
-    }
     seen.add(line.id);
     items.push(line);
   }
   return items;
 }
 
-function linkedPart(parts: readonly PartLine[], sourcePartLineId: string): PartLine | undefined {
-  return parts.find((part) => part.id === sourcePartLineId);
+function softDeleteItem(item: InventoryItem, now: number): InventoryItem {
+  if (item.deletedAt != null) return item;
+  return { ...item, deletedAt: now, updatedAt: now };
 }
 
-function refreshLinkedItem(existing: InventoryItem, part: PartLine, now: number): InventoryItem {
-  const partName = clip(part.partDescription, 200);
-  const supplier = clip(part.vendor, 80);
-  const description = inventoryDescriptionFromPart(part);
-  const unchanged =
-    existing.deletedAt == null &&
-    existing.partName === partName &&
-    existing.supplier === supplier &&
-    existing.description === description;
-  if (unchanged) return existing;
-  return {
-    ...existing,
-    partName,
-    supplier,
-    description,
-    deletedAt: null,
-    updatedAt: now,
-  };
+const RECEIVED_STATUSES = new Set<PartStatus>(["Received", "Checked in"]);
+
+export type InventoryReceipt = {
+  partLineId: string;
+  inventoryItemId: string | null;
+  qty: number;
+  appliedAt: number;
+  /** True when a retired row blocked creating another row for this line. */
+  skipped: boolean;
+};
+
+function lineIsReceived(part: PartLine): boolean {
+  return part.destinationType === "Inventory" && RECEIVED_STATUSES.has(part.status) && !partIsSoftDeleted(part);
 }
 
-function createLinkedItem(part: PartLine, now: number): InventoryItem {
+function shouldReceipt(previous: PartLine | undefined, next: PartLine): boolean {
+  if (!lineIsReceived(next)) return false;
+  if (!previous) return true;
+  return !lineIsReceived(previous);
+}
+
+function extraNumber(part: PartLine, keys: readonly string[]): number | null {
+  const record = part as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const parsed = finiteNumber(record[key]);
+    if (parsed !== undefined && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function extraText(part: PartLine, key: string, max: number): string {
+  const record = part as unknown as Record<string, unknown>;
+  return clip(record[key], max);
+}
+
+/** Quantity on the parts line when the bot sent one. Otherwise one unit per line. */
+export function receiptQty(part: PartLine): number {
+  return extraNumber(part, ["quantity", "qty"]) ?? 1;
+}
+
+type ReceiptTarget =
+  | { kind: "live"; item: InventoryItem }
+  | { kind: "blocked" }
+  | { kind: "none" };
+
+function findReceiptTarget(inventory: readonly InventoryItem[], part: PartLine): ReceiptTarget {
+  const linked = inventory.filter((item) => item.sourcePartLineId === part.id);
+  const liveLinked = linked.filter((item) => item.deletedAt == null);
+  if (liveLinked.length === 1) return { kind: "live", item: liveLinked[0]! };
+  if (liveLinked.length > 1 || linked.some((item) => item.deletedAt != null)) return { kind: "blocked" };
+
+  const partNumber = normalizePartNumber(extraText(part, "partNumber", 80));
+  if (!partNumber) return { kind: "none" };
+  const byNumber = inventory.filter((item) => normalizePartNumber(item.partNumber) === partNumber);
+  const live = byNumber.filter((item) => item.deletedAt == null);
+  if (live.length === 1) return { kind: "live", item: live[0]! };
+  if (byNumber.length > 0) return { kind: "blocked" };
+  return { kind: "none" };
+}
+
+function createReceivedItem(part: PartLine, qty: number, now: number): InventoryItem {
   return {
     id: createInventoryId(),
     sourcePartLineId: part.id,
+    hcpMaterialId: null,
     partName: clip(part.partDescription, 200),
-    partNumber: "",
+    partNumber: extraText(part, "partNumber", 80),
     supplier: clip(part.vendor, 80),
     description: inventoryDescriptionFromPart(part),
-    qtyOnHand: 0,
+    qtyOnHand: qty,
     minQty: null,
     minOrderQty: null,
     unitValue: null,
@@ -266,62 +329,63 @@ function createLinkedItem(part: PartLine, now: number): InventoryItem {
   };
 }
 
-function softDeleteItem(item: InventoryItem, now: number): InventoryItem {
-  if (item.deletedAt != null) return item;
-  return { ...item, deletedAt: now, updatedAt: now };
-}
-
 /**
- * On a parts write: upsert one inventory row per live Inventory destination,
- * keyed by sourcePartLineId. Owned fields (qty, mins, unit value, part number)
- * stay as the inventory row left them. Leaving Inventory, or a soft-deleted
- * parts line, soft-deletes the link. Manual rows (no source) are untouched.
+ * Apply new Inventory receipts. Does not delete rows, un-retire rows, or
+ * rewrite qty, unit value, or description except to add received qty.
+ * Each parts line id is applied at most once.
  */
-export function syncInventoryFromParts(
-  parts: readonly PartLine[],
+export function applyInventoryReceipts(
+  previousParts: readonly PartLine[],
+  nextParts: readonly PartLine[],
   inventory: readonly InventoryItem[],
+  receipts: readonly InventoryReceipt[],
   now = Date.now(),
-): InventoryItem[] {
-  const active = new Map<string, PartLine>();
-  for (const part of parts) {
-    if (part.destinationType !== "Inventory" || partIsSoftDeleted(part)) continue;
-    active.set(part.id, part);
-  }
+): { inventory: InventoryItem[]; receipts: InventoryReceipt[] } {
+  const previousById = new Map(previousParts.map((part) => [part.id, part]));
+  const applied = new Set(receipts.map((receipt) => receipt.partLineId));
+  let nextInventory = inventory.map((item) => ({ ...item }));
+  const nextReceipts = receipts.map((receipt) => ({ ...receipt }));
 
-  const canonical = new Map<string, InventoryItem>();
-  for (const item of inventory) {
-    if (!item.sourcePartLineId) continue;
-    const previous = canonical.get(item.sourcePartLineId);
-    if (!previous || item.updatedAt >= previous.updatedAt) {
-      canonical.set(item.sourcePartLineId, item);
-    }
-  }
-
-  const seenSources = new Set<string>();
-  const next: InventoryItem[] = [];
-
-  for (const item of inventory) {
-    if (!item.sourcePartLineId) {
-      next.push(item);
-      continue;
-    }
-    if (seenSources.has(item.sourcePartLineId)) continue;
-    seenSources.add(item.sourcePartLineId);
-    const source = canonical.get(item.sourcePartLineId) ?? item;
-    const part = linkedPart(parts, item.sourcePartLineId);
-    if (part && active.has(part.id)) {
-      next.push(refreshLinkedItem(source, part, now));
+  for (const part of nextParts) {
+    if (applied.has(part.id) || !shouldReceipt(previousById.get(part.id), part)) continue;
+    const qty = receiptQty(part);
+    const target = findReceiptTarget(nextInventory, part);
+    if (target.kind === "live") {
+      nextInventory = nextInventory.map((item) =>
+        item.id === target.item.id
+          ? { ...item, qtyOnHand: item.qtyOnHand + qty, updatedAt: now }
+          : item,
+      );
+      nextReceipts.push({
+        partLineId: part.id,
+        inventoryItemId: target.item.id,
+        qty,
+        appliedAt: now,
+        skipped: false,
+      });
+    } else if (target.kind === "blocked") {
+      nextReceipts.push({
+        partLineId: part.id,
+        inventoryItemId: null,
+        qty: 0,
+        appliedAt: now,
+        skipped: true,
+      });
     } else {
-      next.push(softDeleteItem(source, now));
+      const created = createReceivedItem(part, qty, now);
+      nextInventory = [...nextInventory, created];
+      nextReceipts.push({
+        partLineId: part.id,
+        inventoryItemId: created.id,
+        qty,
+        appliedAt: now,
+        skipped: false,
+      });
     }
+    applied.add(part.id);
   }
 
-  for (const [partId, part] of active) {
-    if (seenSources.has(partId)) continue;
-    next.push(createLinkedItem(part, now));
-  }
-
-  return next;
+  return { inventory: nextInventory, receipts: nextReceipts };
 }
 
 export function mergeInventoryItems(
@@ -354,11 +418,12 @@ export function parseInventoryPatch(value: unknown): { id: string; patch: Partia
   if (!id || inventoryIdError(id)) return null;
   const patch: Partial<InventoryItem> = { id };
   if ("sourcePartLineId" in record) patch.sourcePartLineId = sourcePartLineId(record.sourcePartLineId);
+  if ("hcpMaterialId" in record) patch.hcpMaterialId = normalizeHcpMaterialId(record.hcpMaterialId);
   if ("partName" in record) patch.partName = clip(record.partName, 200);
   if ("partNumber" in record) patch.partNumber = clip(record.partNumber, 80);
   if ("supplier" in record) patch.supplier = clip(record.supplier, 80);
   if ("description" in record) patch.description = clip(record.description, 200);
-  if ("qtyOnHand" in record) patch.qtyOnHand = requiredQty(record.qtyOnHand, 0);
+  if ("qtyOnHand" in record) patch.qtyOnHand = onHandQty(record.qtyOnHand, 0);
   if ("minQty" in record) patch.minQty = optionalQty(record.minQty, null);
   if ("minOrderQty" in record) patch.minOrderQty = optionalQty(record.minOrderQty, null);
   if ("unitValue" in record) patch.unitValue = optionalQty(record.unitValue, null);
@@ -412,7 +477,7 @@ export function parseInventoryIdInput(
   return { ok: true, id: normalizeInventoryId(raw) };
 }
 
-/** Soft-delete. The row stays so a later parts sync can restore a live link. */
+/** Soft-delete. A later parts save does not clear `deletedAt` or create a replacement row. */
 export function softDeleteInventoryItem(
   items: readonly InventoryItem[],
   incoming: unknown,

@@ -2,11 +2,19 @@ import { sanitizeLoadedParts, withPartLineExtras, type PartLine } from "@/lib/pa
 import { isStaleRevision, readStoredRevision, STALE_REVISION_ERROR } from "@/lib/revision";
 import { validatePartsPut } from "@/lib/validate-parts";
 import {
+  applyInventoryReceipts,
   mergeInventoryItems,
   sanitizeLoadedInventory,
-  syncInventoryFromParts,
   type InventoryItem,
+  type InventoryReceipt,
 } from "@/lib/inventory";
+import { sanitizeInventorySync, type InventorySyncMeta } from "@/lib/inventory-hcp-sync";
+import {
+  sanitizeInventoryFlag,
+  sanitizeInventoryUsage,
+  type InventoryFlag,
+  type InventoryUsage,
+} from "@/lib/inventory-usage";
 
 export const SHARED_PARTS_VERSION = 2;
 
@@ -17,6 +25,12 @@ export type SharedPartsDocument = {
   updatedAt: number;
   parts: PartLine[];
   inventory: InventoryItem[];
+  /** Parts line ids already received into inventory. Stops a second save from adding qty again. */
+  inventoryReceipts: InventoryReceipt[];
+  /** Parts used on completed Housecall Pro jobs. Nothing is posted to QuickBooks. */
+  inventoryUsage: InventoryUsage[];
+  inventoryFlags: InventoryFlag[];
+  inventorySync: InventorySyncMeta | null;
 };
 
 export type SharedPartsPayload = {
@@ -27,15 +41,61 @@ export type SharedPartsPayload = {
   updatedAt?: number | null;
 };
 
-const DOC_KEYS = new Set(["version", "revision", "updatedAt", "parts", "inventory", "jobs"]);
+const DOC_KEYS = new Set([
+  "version",
+  "revision",
+  "updatedAt",
+  "parts",
+  "inventory",
+  "inventoryReceipts",
+  "inventoryUsage",
+  "inventoryFlags",
+  "inventorySync",
+  "jobs",
+]);
 
 type ParsedPartsBody = {
   parts: PartLine[];
   /** Null when the payload omitted inventory — a parts-only client must not clear it. */
   inventory: InventoryItem[] | null;
+  inventoryReceipts: InventoryReceipt[] | null;
+  inventoryUsage: InventoryUsage[] | null;
+  inventoryFlags: InventoryFlag[] | null;
+  inventorySync: InventorySyncMeta | null;
   updatedAt: number;
   extras: Record<string, unknown>;
 };
+
+function sanitizeReceipt(value: unknown): InventoryReceipt | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<InventoryReceipt>;
+  const partLineId = typeof record.partLineId === "string" ? record.partLineId.trim().slice(0, 128) : "";
+  if (!partLineId) return null;
+  const qty = typeof record.qty === "number" && Number.isFinite(record.qty) ? record.qty : 0;
+  const appliedAt = typeof record.appliedAt === "number" && Number.isFinite(record.appliedAt) ? record.appliedAt : 0;
+  const inventoryItemId =
+    typeof record.inventoryItemId === "string" && record.inventoryItemId.trim()
+      ? record.inventoryItemId.trim().slice(0, 128)
+      : null;
+  return {
+    partLineId,
+    inventoryItemId,
+    qty,
+    appliedAt,
+    skipped: record.skipped === true,
+  };
+}
+
+function readList<T>(value: unknown, present: boolean, sanitize: (item: unknown) => T | null): T[] | null {
+  if (!present) return null;
+  if (!Array.isArray(value)) return [];
+  const rows: T[] = [];
+  for (const item of value) {
+    const row = sanitize(item);
+    if (row) rows.push(row);
+  }
+  return rows;
+}
 
 function documentExtras(record: Record<string, unknown>): Record<string, unknown> {
   const extras: Record<string, unknown> = {};
@@ -50,21 +110,34 @@ function readPartsBody(value: unknown): ParsedPartsBody | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const parts = Array.isArray(record.parts) ? sanitizeLoadedParts(record.parts) : [];
-  const inventory = Object.prototype.hasOwnProperty.call(record, "inventory")
-    ? sanitizeLoadedInventory(record.inventory)
-    : null;
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(record, key);
+  const inventory = has("inventory") ? sanitizeLoadedInventory(record.inventory) : null;
+  const inventoryReceipts = readList(record.inventoryReceipts, has("inventoryReceipts"), sanitizeReceipt);
+  const inventoryUsage = readList(record.inventoryUsage, has("inventoryUsage"), sanitizeInventoryUsage);
+  const inventoryFlags = readList(record.inventoryFlags, has("inventoryFlags"), sanitizeInventoryFlag);
+  const inventorySync = has("inventorySync") ? sanitizeInventorySync(record.inventorySync) : null;
   const updatedAt =
     typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt)
       ? record.updatedAt
       : Date.now();
-  return { parts, inventory, updatedAt, extras: documentExtras(record) };
+  return {
+    parts,
+    inventory,
+    inventoryReceipts,
+    inventoryUsage,
+    inventoryFlags,
+    inventorySync,
+    updatedAt,
+    extras: documentExtras(record),
+  };
 }
 
 /**
  * Accept a stored document or a PUT body. Returns null when the payload is
  * not an object. An empty parts list is valid (empty board).
- * v1 documents have no destination fields and no inventory array. Load derives
- * destinations and leaves inventory empty until a parts write syncs links.
+ * v1 documents have no destination fields and no inventory array. Load leaves
+ * inventory as stored. A parts write can receipt new stock; it does not
+ * delete or un-retire a row.
  * Ignores any `jobs` field so a parts write cannot be treated as a job card.
  * Unknown keys already stored on the document are kept.
  */
@@ -78,6 +151,10 @@ export function parseSharedPartsDocument(value: unknown): SharedPartsDocument | 
     updatedAt: parsed.updatedAt,
     parts: parsed.parts,
     inventory: parsed.inventory ?? [],
+    inventoryReceipts: parsed.inventoryReceipts ?? [],
+    inventoryUsage: parsed.inventoryUsage ?? [],
+    inventoryFlags: parsed.inventoryFlags ?? [],
+    inventorySync: parsed.inventorySync,
   };
 }
 
@@ -93,7 +170,11 @@ export function toSharedPartsDocument(
     revision,
     updatedAt,
     parts,
-    inventory: syncInventoryFromParts(parts, inventory, updatedAt),
+    inventory,
+    inventoryReceipts: [],
+    inventoryUsage: [],
+    inventoryFlags: [],
+    inventorySync: null,
   };
 }
 
@@ -104,6 +185,10 @@ export function emptySharedPartsDocument(updatedAt = Date.now(), revision = 0): 
     updatedAt,
     parts: [],
     inventory: [],
+    inventoryReceipts: [],
+    inventoryUsage: [],
+    inventoryFlags: [],
+    inventorySync: null,
   };
 }
 
@@ -162,31 +247,39 @@ export function mergeSharedPartsDocuments(
   return { parts };
 }
 
-function withSyncedParts(
+function withPartsWrite(
   current: SharedPartsDocument,
   parts: PartLine[],
   inventory: InventoryItem[],
   now: number,
   revision = (current.revision ?? 0) + 1,
 ): SharedPartsDocument {
+  const received = applyInventoryReceipts(
+    current.parts,
+    parts,
+    inventory,
+    current.inventoryReceipts ?? [],
+    now,
+  );
   return {
     ...current,
     version: SHARED_PARTS_VERSION,
     revision,
     updatedAt: now,
     parts,
-    inventory: syncInventoryFromParts(parts, inventory, now),
+    inventory: received.inventory,
+    inventoryReceipts: received.receipts,
   };
 }
 
-/** Replace parts lines and sync inventory links. Document extras and manual stock stay. */
+/** Replace parts lines. A received Inventory line can add stock. It cannot delete or un-retire a row. */
 export function replacePartsLines(
   current: SharedPartsDocument | null,
   parts: PartLine[],
   now = Date.now(),
 ): SharedPartsDocument {
   const base = current ?? emptySharedPartsDocument(0);
-  return withSyncedParts(base, sanitizeLoadedParts(parts), base.inventory, now);
+  return withPartsWrite(base, sanitizeLoadedParts(parts), base.inventory, now);
 }
 
 /** Replace inventory rows without re-syncing from parts. Parts lines stay put. */
@@ -239,7 +332,7 @@ export function applyIncomingPartsPut(
       : mergeInventoryItems(base.inventory, parsed.inventory, basedOn);
   return {
     ok: true,
-    doc: withSyncedParts(base, merged.parts, inventory, now, currentRevision + 1),
+    doc: withPartsWrite(base, merged.parts, inventory, now, currentRevision + 1),
   };
 }
 
