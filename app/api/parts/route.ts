@@ -3,9 +3,11 @@ import { removePartLine, upsertPartLine } from "@/lib/parts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
-  toSharedPartsDocument,
+  replacePartsLines,
+  type SharedPartsDocument,
 } from "@/lib/parts-board";
 import {
+  enqueuePartsMutation,
   isPartsStoreConfigured,
   readSharedParts,
   writeSharedParts,
@@ -33,6 +35,23 @@ function partsWriteUnauthorized(request: Request): Response | null {
     return json({ ok: false, error: "Unauthorized" }, 401);
   }
   return null;
+}
+
+/**
+ * Optional If-Match revision gate. Clients that omit the header keep the
+ * updatedAt line merge. A mismatch does not write.
+ */
+function revisionConflict(request: Request, current: SharedPartsDocument | null): Response | null {
+  const header = request.headers.get("if-match");
+  if (header == null) return null;
+  const token = header.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
+  if (!token || token === "*") return null;
+  const actual = String(current?.updatedAt ?? 0);
+  if (token === actual) return null;
+  return json(
+    { ok: false, error: "Revision conflict", updatedAt: current?.updatedAt ?? 0 },
+    409,
+  );
 }
 
 function partsStoreUnavailable(): Response | null {
@@ -114,30 +133,34 @@ export async function PUT(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  try {
-    const current = await readSharedParts();
-    const result = applyIncomingPartsPut(current, body);
-    if (!result.ok) return json({ ok: false, error: result.error }, 400);
-    const next = result.doc;
-    await writeSharedParts(next);
-    return json({
-      ok: true,
-      empty: next.parts.length === 0,
-      configured: true,
-      wrote: true,
-      ...next,
-    });
-  } catch (error) {
-    console.error("Shared parts write failed", error);
-    return json(
-      {
-        ok: false,
+  return enqueuePartsMutation(async () => {
+    try {
+      const current = await readSharedParts();
+      const conflict = revisionConflict(request, current);
+      if (conflict) return conflict;
+      const result = applyIncomingPartsPut(current, body);
+      if (!result.ok) return json({ ok: false, error: result.error }, 400);
+      const next = result.doc;
+      await writeSharedParts(next);
+      return json({
+        ok: true,
+        empty: next.parts.length === 0,
         configured: true,
-        error: "Shared parts store could not be written",
-      },
-      502,
-    );
-  }
+        wrote: true,
+        ...next,
+      });
+    } catch (error) {
+      console.error("Shared parts write failed", error);
+      return json(
+        {
+          ok: false,
+          configured: true,
+          error: "Shared parts store could not be written",
+        },
+        502,
+      );
+    }
+  });
 }
 
 /**
@@ -158,31 +181,33 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
-  try {
-    const current = (await readSharedParts()) ?? emptySharedPartsDocument();
-    const result = upsertPartLine(current.parts, body);
-    if (!result.ok) return json({ ok: false, error: result.error }, 400);
-    const next = toSharedPartsDocument({ parts: result.parts }, Date.now());
-    await writeSharedParts(next);
-    return json({
-      ok: true,
-      empty: next.parts.length === 0,
-      configured: true,
-      wrote: true,
-      upserted: result.line,
-      ...next,
-    });
-  } catch (error) {
-    console.error("Parts upsert failed", error);
-    return json(
-      {
-        ok: false,
+  return enqueuePartsMutation(async () => {
+    try {
+      const current = (await readSharedParts()) ?? emptySharedPartsDocument();
+      const result = upsertPartLine(current.parts, body);
+      if (!result.ok) return json({ ok: false, error: result.error }, 400);
+      const next = replacePartsLines(current, result.parts, Date.now());
+      await writeSharedParts(next);
+      return json({
+        ok: true,
+        empty: next.parts.length === 0,
         configured: true,
-        error: "Shared parts store could not be written",
-      },
-      502,
-    );
-  }
+        wrote: true,
+        upserted: result.line,
+        ...next,
+      });
+    } catch (error) {
+      console.error("Parts upsert failed", error);
+      return json(
+        {
+          ok: false,
+          configured: true,
+          error: "Shared parts store could not be written",
+        },
+        502,
+      );
+    }
+  });
 }
 
 /**
@@ -199,31 +224,33 @@ export async function DELETE(request: Request) {
   const target = await readDeleteTarget(request);
   if (!target.ok) return target.response;
 
-  try {
-    const current = (await readSharedParts()) ?? emptySharedPartsDocument();
-    const result = removePartLine(current.parts, target.incoming);
-    if (!result.ok) {
-      return json({ ok: false, error: result.error }, result.missing ? 404 : 400);
-    }
-    const next = toSharedPartsDocument({ parts: result.parts }, Date.now());
-    await writeSharedParts(next);
-    return json({
-      ok: true,
-      empty: next.parts.length === 0,
-      configured: true,
-      wrote: true,
-      removed: result.removed,
-      ...next,
-    });
-  } catch (error) {
-    console.error("Parts delete failed", error);
-    return json(
-      {
-        ok: false,
+  return enqueuePartsMutation(async () => {
+    try {
+      const current = (await readSharedParts()) ?? emptySharedPartsDocument();
+      const result = removePartLine(current.parts, target.incoming);
+      if (!result.ok) {
+        return json({ ok: false, error: result.error }, result.missing ? 404 : 400);
+      }
+      const next = replacePartsLines(current, result.parts, Date.now());
+      await writeSharedParts(next);
+      return json({
+        ok: true,
+        empty: next.parts.length === 0,
         configured: true,
-        error: "Shared parts store could not be written",
-      },
-      502,
-    );
-  }
+        wrote: true,
+        removed: result.removed,
+        ...next,
+      });
+    } catch (error) {
+      console.error("Parts delete failed", error);
+      return json(
+        {
+          ok: false,
+          configured: true,
+          error: "Shared parts store could not be written",
+        },
+        502,
+      );
+    }
+  });
 }

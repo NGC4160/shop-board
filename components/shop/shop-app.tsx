@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast, Toaster } from "sonner";
 import {
   customerNameError,
@@ -23,7 +23,8 @@ import {
   updateJob,
 } from "@/lib/board-store";
 import { filterJobsByTimeframe } from "@/lib/filters";
-import { sortJobsByJobNumber } from "@/lib/sort";
+import { jobsOverSevenDaysStarted } from "@/lib/startedFilter";
+import { sortJobsByDaysHeld } from "@/lib/sort";
 import {
   refreshHcpJobs,
   startHcpMorningSync,
@@ -49,6 +50,7 @@ export function ShopApp() {
   const [pendingRemove, setPendingRemove] = useState<CartJob | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<ClientHcpSyncResult | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const timeframe = board.prefs.timeframe ?? "";
   const scrollRef = useRef<HTMLElement>(null);
   useMobileViewportRestore(scrollRef);
@@ -71,6 +73,11 @@ export function ShopApp() {
       return;
     }
     if (forced) toast("Housecall Pro · up to date");
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -164,9 +171,9 @@ export function ShopApp() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [draft, abandonBlankDraft]);
 
-  const visible = useMemo(
-    () => sortJobsByJobNumber(filterJobsByTimeframe(board.jobs, timeframe)),
-    [board.jobs, timeframe],
+  const visible = sortJobsByDaysHeld(
+    filterJobsByTimeframe(jobsOverSevenDaysStarted(board.jobs, now), timeframe),
+    now,
   );
   const timeframeLabel = formatTimeframe(timeframe);
 
@@ -235,7 +242,7 @@ export function ShopApp() {
         data-testid="hcp-refresh"
         style={{ minHeight: Math.max(40, refreshing ? 44 : pull) }}
       >
-        <BoardNav current="jobs" />
+        <BoardNav current="aging" />
         <TimeframeFilter
           value={timeframe}
           onChange={(value) => savePrefs({ timeframe: value })}
@@ -248,9 +255,9 @@ export function ShopApp() {
 
       <main ref={scrollRef} className="board-scroll min-h-0 min-w-0 flex-1">
         <p className="print-only mb-3 px-3 font-display text-2xl font-semibold">
-          NGC Shop Board
+          Aging Carts
         </p>
-        <p className="sr-only">Spreadsheet · numbered in job-number order</p>
+        <p className="sr-only">Spreadsheet · longest in the shop first</p>
 
         {visible.length === 0 ? (
           <div className="m-3 rounded-lg border border-border bg-surface px-6 py-16 text-center">
@@ -271,6 +278,16 @@ export function ShopApp() {
                   Clear timeframe
                 </button>
               </>
+            ) : board.jobs.length > 0 ? (
+              <>
+                <p className="font-display text-2xl font-semibold">
+                  No jobs clocked in more than 7 days ago
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  This list only shows open jobs whose Housecall Pro work start is more than 7
+                  days ago. Jobs with no clock-in stay hidden.
+                </p>
+              </>
             ) : (
               <>
                 <p className="font-display text-2xl font-semibold">No carts on the board</p>
@@ -286,6 +303,7 @@ export function ShopApp() {
           <BoardTable
             jobs={visible}
             allJobs={board.jobs}
+            now={now}
             onChange={onChange}
             onRemove={setPendingRemove}
             focusId={focusId}

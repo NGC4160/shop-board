@@ -1,4 +1,15 @@
 import { isIsoDate, normalizeTimeframe } from "@/lib/jobs";
+import {
+  customerNameForDestination,
+  deriveDestinationFromCustomerName,
+  destinationError,
+  isDestinationType,
+  resolveDestinationInput,
+  type DestinationType,
+} from "@/lib/validate-parts";
+
+export type { DestinationType };
+export { DESTINATION_TYPES } from "@/lib/validate-parts";
 
 export const PART_STATUSES = [
   "Ordered",
@@ -17,7 +28,10 @@ export type PartCarrier = (typeof PART_CARRIERS)[number];
 
 export type PartLine = {
   id: string;
+  /** Legacy label. Kept in sync with the destination so an old client still reads. */
   customerName: string;
+  destinationType: DestinationType;
+  destinationName: string;
   jobNumber: string;
   partDescription: string;
   vendor: string;
@@ -32,6 +46,8 @@ export type PartLine = {
 export type PartLineInput = {
   id?: unknown;
   customerName?: unknown;
+  destinationType?: unknown;
+  destinationName?: unknown;
   jobNumber?: unknown;
   partDescription?: unknown;
   vendor?: unknown;
@@ -42,6 +58,23 @@ export type PartLineInput = {
   note?: unknown;
   updatedAt?: unknown;
 };
+
+const PART_LINE_KEYS = new Set([
+  "id",
+  "customerName",
+  "destinationType",
+  "destinationName",
+  "jobNumber",
+  "partDescription",
+  "vendor",
+  "status",
+  "carrier",
+  "trackingNumber",
+  "expectedDate",
+  "note",
+  "updatedAt",
+  "jobs",
+]);
 
 export const PART_STATUS_CHIP: Record<PartStatus, string> = {
   Ordered: "bg-chip-parts text-chip-parts-fg",
@@ -65,6 +98,8 @@ const STATUS_RANK: Record<PartStatus, number> = {
 export const SAMPLE_PART_LINE: PartLine = {
   id: "sample-demo-part",
   customerName: "SAMPLE Customer",
+  destinationType: "Customer",
+  destinationName: "SAMPLE Customer",
   jobNumber: "SAMPLE",
   partDescription: "Example 48V charger — not a real order",
   vendor: "Example Vendor",
@@ -87,6 +122,8 @@ export function emptyPartLine(id = createPartId(), now = Date.now()): PartLine {
   return {
     id,
     customerName: "",
+    destinationType: "Customer",
+    destinationName: "",
     jobNumber: "",
     partDescription: "",
     vendor: "",
@@ -173,13 +210,66 @@ export function trackingUrl(carrier: string, trackingNumber: string): string | n
   }
 }
 
+function lineExtras(record: object): Record<string, unknown> {
+  const extras: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (PART_LINE_KEYS.has(key)) continue;
+    extras[key] = value;
+  }
+  return extras;
+}
+
+/** Keep stored keys this build does not know about. `jobs` is never a part field. */
+export function withPartLineExtras(line: PartLine, ...records: object[]): PartLine {
+  const extras: Record<string, unknown> = {};
+  for (const record of records) Object.assign(extras, lineExtras(record));
+  return { ...extras, ...line };
+}
+
+function applyDestination(next: PartLine, patch: Partial<PartLine>): PartLine {
+  const explicit = patch.destinationType !== undefined || patch.destinationName !== undefined;
+  if (explicit && patch.destinationType && isDestinationType(patch.destinationType)) {
+    const name = patch.destinationName !== undefined ? patch.destinationName : next.destinationName;
+    if (!destinationError(patch.destinationType, name)) {
+      next.destinationType = patch.destinationType;
+      next.destinationName = patch.destinationType === "Inventory" ? "" : clipText(name, 120);
+      next.customerName = customerNameForDestination(next.destinationType, next.destinationName);
+      return next;
+    }
+  }
+  if (explicit && patch.customerName === undefined && destinationError(next.destinationType, next.destinationName)) {
+    const derived = deriveDestinationFromCustomerName(next.customerName);
+    next.destinationType = derived.destinationType;
+    next.destinationName = derived.destinationName;
+    next.customerName = customerNameForDestination(derived.destinationType, derived.destinationName);
+    return next;
+  }
+  if (patch.customerName !== undefined || !isDestinationType(next.destinationType)) {
+    const derived = deriveDestinationFromCustomerName(next.customerName);
+    next.destinationType = derived.destinationType;
+    next.destinationName = derived.destinationName;
+    next.customerName = customerNameForDestination(derived.destinationType, derived.destinationName);
+  }
+  return next;
+}
+
 export function parsePartPatch(value: unknown): { id: string; patch: Partial<PartLine> } | null {
   if (!value || typeof value !== "object") return null;
   const record = value as PartLineInput;
   const id = normalizePartId(record.id);
   if (!id || partIdError(id)) return null;
   const patch: Partial<PartLine> = { id };
-  if ("customerName" in record) patch.customerName = clipText(record.customerName, 120);
+  const resolved =
+    "destinationType" in record || "destinationName" in record
+      ? resolveDestinationInput(record)
+      : null;
+  if (resolved?.ok) {
+    patch.destinationType = resolved.destination.destinationType;
+    patch.destinationName = resolved.destination.destinationName;
+    patch.customerName = resolved.destination.customerName;
+  } else if ("customerName" in record) {
+    patch.customerName = clipText(record.customerName, 120);
+  }
   if ("jobNumber" in record) patch.jobNumber = clipText(record.jobNumber, 32);
   if ("partDescription" in record) patch.partDescription = clipText(record.partDescription, 200);
   if ("vendor" in record) patch.vendor = clipText(record.vendor, 80);
@@ -206,7 +296,9 @@ export function sanitizePartLine(value: unknown, fallbackId?: string): PartLine 
   const fallback = normalizePartId(fallbackId);
   const id = parsed?.id || fallback;
   if (!id || partIdError(id)) return null;
-  return mergePartLine(null, { ...(parsed?.patch ?? {}), id });
+  const line = mergePartLine(null, { ...(parsed?.patch ?? {}), id });
+  if (!value || typeof value !== "object") return line;
+  return withPartLineExtras(line, value);
 }
 
 export function sanitizeLoadedParts(value: unknown): PartLine[] {
@@ -225,11 +317,19 @@ export function sanitizeLoadedParts(value: unknown): PartLine[] {
 export function mergePartLine(current: PartLine | null, patch: Partial<PartLine>, now = Date.now()): PartLine {
   const base = current ?? emptyPartLine(patch.id || createPartId(), now);
   const next: PartLine = {
+    ...lineExtras(base),
+    ...lineExtras(patch),
     ...base,
     ...patch,
     id: normalizePartId(patch.id) || base.id,
     customerName:
       patch.customerName !== undefined ? clipText(patch.customerName, 120) : base.customerName,
+    destinationType:
+      patch.destinationType && isDestinationType(patch.destinationType)
+        ? patch.destinationType
+        : base.destinationType,
+    destinationName:
+      patch.destinationName !== undefined ? clipText(patch.destinationName, 120) : base.destinationName,
     jobNumber: patch.jobNumber !== undefined ? clipText(patch.jobNumber, 32) : base.jobNumber,
     partDescription:
       patch.partDescription !== undefined
@@ -250,7 +350,7 @@ export function mergePartLine(current: PartLine | null, patch: Partial<PartLine>
     updatedAt:
       patch.updatedAt !== undefined && Number.isFinite(patch.updatedAt) ? patch.updatedAt : now,
   };
-  return next;
+  return applyDestination(next, patch);
 }
 
 export function upsertPartLine(
@@ -261,8 +361,20 @@ export function upsertPartLine(
   const parsed = parsePartPatch(incoming);
   if (!parsed) return { ok: false, error: "A stable part id is required" };
   const existing = parts.find((item) => item.id === parsed.id) ?? null;
+  const record = incoming as Record<string, unknown>;
+  const touchesDestination =
+    "destinationType" in record || "destinationName" in record || "customerName" in record;
   const fields = { ...parsed.patch };
   delete fields.updatedAt;
+  if (touchesDestination) {
+    const resolved = resolveDestinationInput(record);
+    if (!resolved.ok) return { ok: false, error: resolved.error };
+    fields.destinationType = resolved.destination.destinationType;
+    fields.destinationName = resolved.destination.destinationName;
+    fields.customerName = resolved.destination.customerName;
+  } else if (!existing) {
+    return { ok: false, error: "Destination name is required" };
+  }
   const line = mergePartLine(existing, fields, now);
   if (!existing) {
     return { ok: true, parts: [...parts, line], line };
@@ -310,10 +422,21 @@ export function removePartLine(
   };
 }
 
+export function destinationLabel(
+  part: Pick<PartLine, "destinationType" | "destinationName" | "customerName">,
+): string {
+  if (part.destinationType === "Inventory") return "Inventory";
+  const name = part.destinationName.trim();
+  if (name) return name;
+  return part.customerName.trim();
+}
+
 export function partMatchesSearch(part: PartLine, search: string): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) return true;
-  const haystack = [part.customerName, part.jobNumber].join(" ").toLowerCase();
+  const haystack = [destinationLabel(part), part.destinationName, part.customerName, part.jobNumber]
+    .join(" ")
+    .toLowerCase();
   return haystack.includes(needle);
 }
 
@@ -335,12 +458,17 @@ export function sortParts(parts: readonly PartLine[]): PartLine[] {
     const aDate = isIsoDate(a.expectedDate) ? a.expectedDate : "9999-99-99";
     const bDate = isIsoDate(b.expectedDate) ? b.expectedDate : "9999-99-99";
     if (aDate !== bDate) return aDate.localeCompare(bDate);
-    const names = a.customerName.localeCompare(b.customerName, undefined, { sensitivity: "base" });
+    const names = destinationLabel(a).localeCompare(destinationLabel(b), undefined, { sensitivity: "base" });
     if (names !== 0) return names;
     return a.id.localeCompare(b.id);
   });
 }
 
-export function isBlankPartDraft(part: Pick<PartLine, "customerName" | "partDescription">): boolean {
-  return !part.customerName.trim() && !part.partDescription.trim();
+export function isBlankPartDraft(
+  part: Pick<PartLine, "destinationType" | "destinationName" | "customerName" | "partDescription">,
+): boolean {
+  if (part.partDescription.trim()) return false;
+  if (part.destinationType === "Inventory") return false;
+  if (part.destinationName.trim() || part.customerName.trim()) return false;
+  return true;
 }

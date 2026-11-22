@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { displayStartedDate, formatStartedDate } from "./format.ts";
+import { displayDaysSinceStarted, displayStartedDate, formatStartedDate } from "./format.ts";
 import { isUnscheduledStatus } from "./jobs.ts";
 
 describe("formatStartedDate", () => {
@@ -12,6 +12,26 @@ describe("formatStartedDate", () => {
     assert.equal(formatStartedDate(undefined), "—");
     assert.equal(formatStartedDate(0), "—");
     assert.equal(formatStartedDate(Number.NaN), "—");
+  });
+});
+
+describe("displayDaysSinceStarted", () => {
+  const now = Date.parse("2026-10-16T15:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+
+  it("counts whole days from the HCP clock-in", () => {
+    assert.equal(displayDaysSinceStarted(now - 8 * day, now - 2 * day, now), "8");
+    assert.equal(displayDaysSinceStarted(now - 7 * day - 60 * 60 * 1000, null, now), "7");
+    assert.equal(displayDaysSinceStarted(now - day + 60_000, null, now), "0");
+    assert.equal(displayDaysSinceStarted(now + day, now - 4 * day, now), "0");
+  });
+
+  it("falls back to the old Date started value only when the clock-in is null", () => {
+    assert.equal(displayDaysSinceStarted(null, now - 3 * day, now), "3");
+    assert.equal(displayDaysSinceStarted(undefined, now - 3 * day, now), "3");
+    assert.equal(displayDaysSinceStarted(null, null, now), "—");
+    assert.equal(displayDaysSinceStarted(null, 0, now), "—");
+    assert.equal(displayDaysSinceStarted(0, now - 3 * day, now), "—");
   });
 });
 

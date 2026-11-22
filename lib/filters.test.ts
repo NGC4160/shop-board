@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   filterJobsByTimeframe,
+  jobMatches,
   jobMatchesTimeframeFilter,
   startedDateKey,
 } from "./filters.ts";
@@ -70,5 +71,19 @@ describe("timeframe start-date filter", () => {
       filtered.map((job) => job.id),
       ["a"],
     );
+  });
+});
+
+describe("tech filter", () => {
+  it("still matches a former tech who is no longer on the roster", () => {
+    const query = { search: "", chip: "all" as const, hideClosed: true };
+    const ryan = { ...seedJobs[0], primaryTech: "Ryan Gorgoglione", status: "In Progress" };
+    assert.equal(jobMatches(ryan, { ...query, tech: "Ryan Gorgoglione" }), true);
+    assert.equal(jobMatches(ryan, { ...query, tech: "Thomas Wilson" }), false);
+    assert.equal(jobMatches(ryan, { ...query, tech: "", search: "gorgoglione" }), true);
+    const thomas = { ...seedJobs[0], primaryTech: "Thomas Wilson", status: "In Progress" };
+    assert.equal(jobMatches(thomas, { ...query, tech: "Thomas Wilson" }), true);
+    assert.equal(jobMatches(thomas, { ...query, tech: "Marlon Gray" }), false);
+    assert.equal(jobMatches(thomas, { ...query, tech: "", search: "thomas wilson" }), true);
   });
 });

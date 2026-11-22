@@ -37,13 +37,15 @@ export const PIPELINE_STATUSES = [
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
 /** Live NGC Housecall Pro Field Techs (Settings → Team & Permissions). */
-export const PRIMARY_TECHS = [
-  "Marlon Gray",
-  "Ryan Gorgoglione",
-  "Hayden Silva",
-] as const;
+export const PRIMARY_TECHS = ["Marlon Gray", "Hayden Silva"] as const;
 
 export type PrimaryTech = (typeof PRIMARY_TECHS)[number];
+
+/**
+ * Former field techs. Still recognized on stored rows and Housecall Pro sync
+ * so an existing assignment keeps its name. Not offered in the dropdown.
+ */
+export const LEGACY_PRIMARY_TECHS = ["Ryan Gorgoglione", "Thomas Wilson"] as const;
 
 export const NEXT_ACTION_PRESETS = [
   "Call customer",
@@ -178,6 +180,8 @@ export type CartJob = {
   statusChangedAt: number;
   /** Housecall Pro `schedule.scheduled_start`. Null when unknown — never invented. */
   hcpScheduledStartAt: number | null;
+  /** Housecall Pro `work_timestamps.started_at`. Null when absent — never invented. */
+  hcpWorkStartedAt: number | null;
 };
 
 export type CartJobDraft = {
@@ -217,7 +221,12 @@ const SEED_PLUS_5 = chicagoDayOffset(5);
 function seed(
   partial: Omit<
     CartJob,
-    "history" | "createdAt" | "updatedAt" | "statusChangedAt" | "hcpScheduledStartAt"
+    | "history"
+    | "createdAt"
+    | "updatedAt"
+    | "statusChangedAt"
+    | "hcpScheduledStartAt"
+    | "hcpWorkStartedAt"
   > & {
     daysAgo: number;
     statusDays: number;
@@ -246,6 +255,7 @@ function seed(
     updatedAt: statusChangedAt,
     statusChangedAt,
     hcpScheduledStartAt: null,
+    hcpWorkStartedAt: null,
     history: [
       { at: createdAt, kind: "created", text: "Added to the board" },
       ...partial.history.map((text, index) => ({
@@ -348,7 +358,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "DS",
     cartColor: "Red",
     bay: "Lot",
-    primaryTech: "Ryan Gorgoglione",
+    primaryTech: "Marlon Gray",
     status: "Deposit Needed",
     nextAction: "Text Housecall Pro invoice",
     timeExpectation: "",
@@ -408,7 +418,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "Drive2",
     cartColor: "White",
     bay: "Outside",
-    primaryTech: "Ryan Gorgoglione",
+    primaryTech: "Hayden Silva",
     status: "Awaiting Estimate",
     nextAction: "Call customer",
     timeExpectation: "",
@@ -468,7 +478,7 @@ export const seedJobs: CartJob[] = [
     cartModel: "Tempo",
     cartColor: "Beige",
     bay: "Trailer",
-    primaryTech: "Ryan Gorgoglione",
+    primaryTech: "Marlon Gray",
     status: "Scheduled",
     nextAction: "Confirm drop-off time",
     timeExpectation: SEED_PLUS_3,
@@ -701,6 +711,7 @@ export function draftToJob(draft: CartJobDraft, existing?: CartJob): CartJob {
     updatedAt: now,
     statusChangedAt: statusChanged,
     hcpScheduledStartAt: existing?.hcpScheduledStartAt ?? null,
+    hcpWorkStartedAt: existing?.hcpWorkStartedAt ?? null,
   };
 }
 
@@ -982,6 +993,7 @@ export function upgradeJob(value: unknown): CartJob | null {
       now,
     ),
     hcpScheduledStartAt: parseStoredHcpScheduledStartAt(job.hcpScheduledStartAt),
+    hcpWorkStartedAt: parseStoredHcpScheduledStartAt(job.hcpWorkStartedAt),
   };
 }
 

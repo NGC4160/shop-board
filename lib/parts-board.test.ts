@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { seedJobs } from "./jobs.ts";
-import { SAMPLE_PART_LINE } from "./parts.ts";
+import { SAMPLE_PART_LINE, sanitizePartLine } from "./parts.ts";
+import { syncInventoryFromParts, type InventoryItem } from "./inventory.ts";
 import {
   applyIncomingPartsPut,
   emptySharedPartsDocument,
@@ -10,6 +11,7 @@ import {
   readPartsWriteBaseUpdatedAt,
   toSharedPartsDocument,
 } from "./parts-board.ts";
+import { SHARED_PARTS_PRIOR_BLOB_PATH } from "./parts-board-backend.ts";
 import { parseSharedBoardDocument } from "./shared-board.ts";
 import { SHARED_BOARD_BLOB_PATH } from "./shared-board-backend.ts";
 import { SHARED_PARTS_BLOB_PATH } from "./parts-board-backend.ts";
@@ -25,7 +27,8 @@ describe("parts document isolation", () => {
     const parsed = parseSharedPartsDocument({ parts: [] });
     assert.ok(parsed);
     assert.equal(parsed.parts.length, 0);
-    assert.equal(parsed.version, 1);
+    assert.equal(parsed.version, 2);
+    assert.deepEqual(parsed.inventory, []);
   });
 
   it("ignores a jobs field so a parts write cannot become job cards", () => {
@@ -66,10 +69,10 @@ describe("parts document isolation", () => {
     assert.equal(parsed.parts[0]?.id, "line-check");
   });
 
-  it("stamps version 1 without a jobs key", () => {
+  it("stamps version 2 without a jobs key", () => {
     const doc = emptySharedPartsDocument(1);
-    assert.equal(doc.version, 1);
-    assert.deepEqual(Object.keys(doc).sort(), ["parts", "updatedAt", "version"]);
+    assert.equal(doc.version, 2);
+    assert.deepEqual(Object.keys(doc).sort(), ["inventory", "parts", "updatedAt", "version"]);
   });
 });
 
@@ -79,6 +82,8 @@ describe("stale parts PUT merge", () => {
     ...SAMPLE_PART_LINE,
     id: "line-bot",
     customerName: "SAMPLE Bot",
+    destinationType: "Customer" as const,
+    destinationName: "SAMPLE Bot",
     partDescription: "Example solenoid — added after the page loaded",
     updatedAt: 2_000,
   };
@@ -136,5 +141,128 @@ describe("stale parts PUT merge", () => {
     assert.equal(result.doc.parts.some((line) => line.id === "line-bot"), true);
     assert.equal(result.doc.parts.some((line) => line.id === "line-old"), true);
     assert.equal(result.doc.updatedAt, 3_000);
+  });
+});
+
+describe("v1 parts documents", () => {
+  const legacyLine = {
+    id: "LINE-STOCK",
+    customerName: "Inventory",
+    jobNumber: "",
+    partDescription: "Example bushing",
+    vendor: "Example Vendor",
+    status: "Received",
+    carrier: "",
+    trackingNumber: "",
+    expectedDate: "2026-10-12",
+    note: "Anonymized fixture shaped like a v1 row",
+    updatedAt: 1_000,
+    poHint: "keep-me",
+  };
+
+  function stockItem(overrides: Partial<InventoryItem> = {}): InventoryItem {
+    return {
+      id: "inv-stock",
+      sourcePartLineId: "LINE-STOCK",
+      partName: "Example bushing",
+      partNumber: "PN-1",
+      supplier: "Example Vendor",
+      description: "Anonymized fixture shaped like a v1 row",
+      qtyOnHand: 4,
+      minQty: 1,
+      minOrderQty: 2,
+      unitValue: 10,
+      updatedAt: 1_500,
+      deletedAt: null,
+      ...overrides,
+    };
+  }
+
+  it("derives a destination from a v1 line and keeps unknown fields", () => {
+    const loaded = sanitizePartLine(legacyLine);
+    assert.ok(loaded);
+    assert.equal(loaded.destinationType, "Inventory");
+    assert.equal(loaded.destinationName, "");
+    assert.equal(loaded.customerName, "Inventory");
+    assert.equal(loaded.partDescription, "Example bushing");
+    assert.equal((loaded as { poHint?: string }).poHint, "keep-me");
+    assert.equal("jobs" in loaded, false);
+  });
+
+  it("does not let an unmigrated PUT wipe destinations, unknown fields, or inventory qty", () => {
+    const loaded = parseSharedPartsDocument({
+      version: 1,
+      updatedAt: 1_000,
+      parts: [legacyLine],
+      shopNote: "keep-doc",
+    });
+    assert.ok(loaded);
+    assert.equal("jobs" in loaded, false);
+    const current = {
+      ...loaded,
+      inventory: [stockItem()],
+    };
+    const staleClient = {
+      parts: [
+        {
+          id: "LINE-STOCK",
+          customerName: "Inventory",
+          jobNumber: "",
+          partDescription: "Example bushing",
+          vendor: "Example Vendor",
+          status: "Received",
+          carrier: "",
+          trackingNumber: "",
+          expectedDate: "2026-10-12",
+          note: "Note edited on an old screen",
+          updatedAt: 2_000,
+        },
+      ],
+      updatedAt: 1_000,
+    };
+    const result = applyIncomingPartsPut(current, staleClient, 3_000);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const line = result.doc.parts[0];
+    assert.equal(line?.destinationType, "Inventory");
+    assert.equal(line?.destinationName, "");
+    assert.equal(line?.note, "Note edited on an old screen");
+    assert.equal((line as { poHint?: string } | undefined)?.poHint, "keep-me");
+    assert.equal((result.doc as { shopNote?: string }).shopNote, "keep-doc");
+    assert.equal(result.doc.inventory.length, 1);
+    assert.equal(result.doc.inventory[0]?.qtyOnHand, 4);
+    assert.equal(result.doc.inventory[0]?.partNumber, "PN-1");
+    assert.equal(result.doc.inventory[0]?.minQty, 1);
+    assert.equal(result.doc.inventory[0]?.minOrderQty, 2);
+    assert.equal(result.doc.inventory[0]?.unitValue, 10);
+    assert.equal(result.doc.inventory[0]?.deletedAt, null);
+    assert.equal(result.doc.version, 2);
+  });
+
+  it("syncs a new Inventory line without clearing an existing manual row", () => {
+    const manual: InventoryItem = {
+      id: "inv-manual",
+      sourcePartLineId: null,
+      partName: "Windshield",
+      partNumber: "",
+      supplier: "Example Glass",
+      description: "Not from a parts line",
+      qtyOnHand: 1,
+      minQty: null,
+      minOrderQty: null,
+      unitValue: null,
+      updatedAt: 1,
+      deletedAt: null,
+    };
+    const part = sanitizePartLine(legacyLine);
+    assert.ok(part);
+    const synced = syncInventoryFromParts([part], [manual], 5);
+    assert.equal(synced.filter((item) => item.sourcePartLineId == null).length, 1);
+    assert.equal(synced.filter((item) => item.sourcePartLineId === "LINE-STOCK").length, 1);
+    assert.equal(synced.find((item) => item.id === "inv-manual")?.qtyOnHand, 1);
+  });
+
+  it("names the rolling prior document used before each save", () => {
+    assert.equal(SHARED_PARTS_PRIOR_BLOB_PATH, "ngc-parts-board.prior.json");
   });
 });
